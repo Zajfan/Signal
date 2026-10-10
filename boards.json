@@ -1,0 +1,6 @@
+[
+  {"ats": "greenhouse", "board": "anthropic", "company": "Anthropic"},
+  {"ats": "greenhouse", "board": "replit", "company": "Replit"},
+  {"ats": "lever", "board": "cursor", "company": "Cursor"},
+  {"ats": "ashby", "board": "openai", "company": "OpenAI"}
+]

@@ -1,0 +1,5 @@
+__pycache__/
+.sites-checkout/
+.aws/
+.codex/
+*.pyc

@@ -1,6 +1,6 @@
 # Signal roadmap
 
-Versioning follows the user's three-part scheme: `0.0.x` alpha, `0.x.0` beta, `1.0.0` first major release. Current: **0.0.2 alpha — marketplace foundation**.
+Versioning follows the user's three-part scheme: `0.0.x` alpha, `0.x.0` beta, `1.0.0` first major release. Current: **0.0.3 alpha — backend foundation, not yet deployed**.
 
 ## 0.0.1 — AI jobs board prototype (complete)
 
@@ -8,32 +8,32 @@ Versioning follows the user's three-part scheme: `0.0.x` alpha, `0.x.0` beta, `1
 - Greenhouse, Lever and Ashby command-line feeds and JSON import.
 - Private static preview and public GitHub source.
 
-## 0.0.2 — Marketplace foundation (in progress)
+## 0.0.2 — Marketplace foundation (complete)
 
 - Product vision, source permission model, architecture and marketplace lifecycle.
 - Add official public-service connectors and documented source registry.
-- Design candidate and employer surfaces: discover, job detail, post a job, employer plans and company workspace.
+- Define candidate and employer surfaces: discover, job detail, post a job, employer plans and company workspace.
 - Mark prices and checkout as unconfigured until business decisions and a merchant account exist.
 
-## 0.0.3 — Persistent data and employer workflow
+## 0.0.3 — Backend foundation (in progress)
 
-- Select production database, auth and hosting architecture.
-- Migrate preview listings into a normalized job schema with provenance.
-- Company registration, company profile, team roles and verification workflow.
-- Employer job editor, preview, draft/save, moderation queue and audit log.
-- Candidate saved jobs and alerts backed by accounts; browsing remains open.
+- Add D1 schema for employers, job posts, payments, imported jobs, source health and moderation history.
+- Implement API foundations for public listings, employer drafts, Checkout, signed webhooks and moderator review.
+- Implement source normalization and scheduled ingestion entry point for JobTech and public ATS feeds.
+- Convert the private static preview to a full-stack Worker/D1 Site and apply the schema migration.
+- Confirm public visitor access and a supported company account/verification path.
 
 ## 0.0.4 — Paid listing alpha
 
 - Confirm products/prices/currency/durations and refund/tax policy.
-- Add hosted checkout, server-side payment webhook and order reconciliation.
+- Configure hosted checkout, payment webhook and order reconciliation.
 - Add posting approval, publish/pause/renew/close lifecycle and clearly labeled sponsored slots.
 - Add employer performance: impressions, detail views and outbound apply clicks.
 
 ## 0.0.5 — Reliable source ingestion
 
-- Scheduled JobTech connector with tests, source status, dedupe and stale-job cleanup.
-- Request USAJOBS API credentials and implement its adapter once authorized.
+- Configure recurring ingestion, tested connectors, source status, dedupe and stale-job cleanup.
+- Configure USAJOBS credentials and run its adapter after access is authorized.
 - Register public ATS boards with known company IDs and documented reuse rules.
 - Source dashboard, freshness/SLA metrics, takedowns and manual review.
 

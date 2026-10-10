@@ -1,6 +1,6 @@
 # Job source policy and coverage plan
 
-**Version:** 0.0.2 (early alpha)
+**Version:** 0.0.3 (early alpha)
 
 Signal should grow through dependable, documented coverage. “Global” is a coverage goal, not permission to copy every site. Use a source only when the source's API, license, contract or clear public-feed terms permit the intended display and outbound referral.
 

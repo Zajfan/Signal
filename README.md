@@ -9,6 +9,7 @@ Signal Jobs is a focused job discovery board for software developers who build w
 - `boards.json` — editable public ATS board configuration.
 - `sources.json` — sample public employment-service queries.
 - `docs/` — product vision, architecture, source policy, and staged roadmap for the global marketplace.
+- `backend/` — D1 schema and a not-yet-deployed Worker API foundation for shared listings, employer posts, paid checkout, moderation, and scheduled ingestion.
 
 The six listings shown before importing are illustrative preview records, not verified current openings. The scraper reads live public ATS feeds when you run it and writes the resulting records to `jobs.json`.
 
@@ -59,3 +60,14 @@ For a local data refresh, schedule the command with your OS task scheduler and k
 ## Matching signals
 
 The scraper detects terms such as GitHub Copilot, Cursor, Claude Code, AI agents, AI-assisted / AI-native engineering, generative AI, LLMs, and AI code review. Its match score is a transparent keyword heuristic, not a hiring probability or endorsement. Check the original employer posting for current details and apply there.
+
+## Backend foundation
+
+See [`backend/README.md`](backend/README.md) for the API routes, database migration, required runtime settings, and deployment gates. Run focused checks with:
+
+```bash
+node --check backend/worker.mjs
+node backend/worker.test.mjs
+```
+
+The Worker and schema are implementation foundations only; they are not connected to the current hosted static Site. Do not accept live employer payments until the Worker, database, trusted sign-in, Stripe webhook, moderation access, and actual package prices are configured and verified.

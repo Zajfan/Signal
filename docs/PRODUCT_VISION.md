@@ -1,7 +1,7 @@
 # Signal — Product vision
 
 **Product:** Signal AI Jobs  
-**Version:** 0.0.2 (early alpha)  
+**Version:** 0.0.3 (early alpha)
 **Purpose:** Build the trusted global job marketplace for work building, deploying, and working effectively with AI.
 
 ## What Signal is
@@ -82,4 +82,4 @@ The launch price, duration, currencies, tax handling, refunds and promotion rule
 
 ## Current boundary
 
-The deployed site is a private static prototype. Its sample cards are illustrative. It has no shared job database, accounts, employer posting persistence, checkout or scheduled ingestion yet. The roadmap makes those production steps explicit.
+The deployed site is still a private static prototype. Its sample cards are illustrative. The repository now includes a D1 schema and Worker API foundation for shared listings, employer drafts, checkout, moderation, and scheduled ingestion, but these are not wired into the hosted Site or production services yet. Stripe credentials/prices, the account model, source schedule and public audience remain unconfigured.

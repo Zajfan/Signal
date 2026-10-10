@@ -14,9 +14,12 @@ This is the first server-side slice for persistent job data, employer drafts, pa
 |---|---|---|
 | `GET /api/v1/jobs` | Public | Search published jobs using `q`, `country`, `work_mode`, `limit`, and `offset`. |
 | `GET /api/v1/employer/jobs` | Signed in | List the current employer's listings. |
+| `GET /api/v1/employer/profile` | Signed in | Read the current company verification state. |
 | `POST /api/v1/employer/jobs` | Signed in | Create a validated draft; it is not searchable. |
+| `POST /api/v1/employer/company-verification` | Signed in | Submit company name and HTTPS website for manual verification. |
 | `POST /api/v1/employer/jobs/:id/checkout` | Listing owner | Create a Stripe Checkout session for a configured package. |
 | `POST /api/v1/payments/stripe/webhook` | Stripe signature | Record payment idempotently and move a paid draft to moderation. |
+| `POST /api/v1/admin/employers/:user_id/verify` | Configured moderator | Approve or reject an employer company. |
 | `POST /api/v1/admin/jobs/:id/moderate` | Configured moderator | Approve or reject a paid listing awaiting review. |
 | `GET /api/v1/health` | Public | Liveness check. |
 
@@ -37,7 +40,7 @@ Example for an approved JobTech query:
 [{"source_id":"se-jobtech-ai","ats":"jobtech","label":"Arbetsförmedlingen JobTech","country_code":"SE","query":"AI","limit":50,"max_pages":2,"enabled":true,"permission_basis":"CC0 public JobTech service","terms_url":"https://data.arbetsformedlingen.se/dataservice/data-service-jobsearch/"}]
 ```
 
-The checkout route is intentionally unavailable until Stripe credentials and fixed price IDs are configured. No amount comes from the browser. The migration records the provider and package, while Stripe remains the system of record for the charged amount. Refund and tax handling still need to be selected before launch. Set `MODERATOR_USER_IDS` to a comma-separated list of trusted Site user IDs before using the moderator route.
+An employer can save drafts before verification, but checkout and publication require a moderator-verified company. Checkout is intentionally unavailable until Stripe credentials and fixed price IDs are configured. No amount comes from the browser. The migration records the provider and package, while Stripe remains the system of record for the charged amount. Refund and tax handling still need to be selected before launch. Set `MODERATOR_USER_IDS` to a comma-separated list of trusted Site user IDs before using moderator routes.
 
 The `scheduled` handler accepts a reviewed `INGEST_SOURCES` JSON array. An enabled source must include `source_id`, `ats`, and a recorded `permission_basis`; each feed is fetched serially, normalized, de-duplicated by source identity, refreshed, and stale records expire after 35 days. Configure a managed recurring Site task only after the Worker and D1 writer are deployed and verified.
 

@@ -68,6 +68,27 @@ async function ensureEmployer(db, user) {
     .bind(user.userId, user.email, nowIso()).run();
 }
 
+async function requestCompanyVerification(request, env, user) {
+  const input = await readJson(request);
+  const companyName = cleanText(input?.company_name, 180);
+  const websiteUrl = String(input?.website_url ?? "").trim();
+  if (!companyName) return json({ error: "Company name is required" }, 400);
+  try {
+    const website = new URL(websiteUrl);
+    if (website.protocol !== "https:") return json({ error: "Company website must use HTTPS" }, 400);
+  } catch { return json({ error: "A valid company website is required" }, 400); }
+  await env.DB.prepare(`UPDATE employers SET company_name = ?, website_url = ?, verification_status = 'pending', verified_at = NULL, updated_at = ? WHERE user_id = ?`)
+    .bind(companyName, websiteUrl, nowIso(), user.userId).run();
+  return json({ verification_status: "pending" }, 202);
+}
+
+async function employerProfile(env, user) {
+  await ensureEmployer(env.DB, user);
+  const profile = await env.DB.prepare(`SELECT user_id, email, company_name, website_url, verification_status, verified_at FROM employers WHERE user_id = ?`)
+    .bind(user.userId).first();
+  return json({ employer: profile });
+}
+
 async function listJobs(request, env) {
   const url = new URL(request.url);
   const q = cleanText(url.searchParams.get("q"), 100);
@@ -132,6 +153,8 @@ async function employerJobs(request, env, user, jobId) {
 
 async function startCheckout(request, env, user, jobId) {
   if (!env.STRIPE_SECRET_KEY || !env.STRIPE_PRICE_STANDARD || !env.STRIPE_PRICE_FEATURED) return json({ error: "Employer checkout is not configured yet" }, 503);
+  const employer = await env.DB.prepare(`SELECT verification_status FROM employers WHERE user_id = ?`).bind(user.userId).first();
+  if (employer?.verification_status !== "verified") return json({ error: "Company verification is required before purchasing a listing" }, 403);
   const body = await readJson(request);
   const packageCode = body?.package_code;
   const priceId = packageCode === "standard" ? env.STRIPE_PRICE_STANDARD : packageCode === "featured" ? env.STRIPE_PRICE_FEATURED : null;
@@ -221,8 +244,9 @@ async function moderateJob(request, env, user, jobId) {
   const action = String(input?.action ?? "");
   const note = cleanText(input?.note, 1000) || null;
   if (!["approve", "reject"].includes(action)) return json({ error: "Action must be approve or reject" }, 400);
-  const job = await env.DB.prepare(`SELECT id, status, package_code FROM employer_jobs WHERE id = ?`).bind(jobId).first();
+  const job = await env.DB.prepare(`SELECT j.id, j.status, j.package_code, e.verification_status FROM employer_jobs j JOIN employers e ON e.user_id = j.employer_user_id WHERE j.id = ?`).bind(jobId).first();
   if (!job) return json({ error: "Job not found" }, 404);
+  if (job.verification_status !== "verified") return json({ error: "Employer company verification is required before publication" }, 409);
   if (job.status !== "pending_review") return json({ error: "Only paid jobs awaiting review can be moderated" }, 409);
   const status = action === "approve" ? "published" : "rejected";
   const publishedAt = action === "approve" ? nowIso() : null;
@@ -235,6 +259,20 @@ async function moderateJob(request, env, user, jobId) {
       .bind(eventId, jobId, user.userId, action, note)
   ]);
   return json({ job_id: jobId, status, expires_at: expiresAt });
+}
+
+async function moderateEmployer(request, env, user, employerUserId) {
+  const moderators = new Set(String(env.MODERATOR_USER_IDS ?? "").split(",").map((id) => id.trim()).filter(Boolean));
+  if (!user || !moderators.has(user.userId)) return json({ error: "Moderator access is required" }, 403);
+  const input = await readJson(request);
+  const action = String(input?.action ?? "");
+  if (!["approve", "reject"].includes(action)) return json({ error: "Action must be approve or reject" }, 400);
+  const exists = await env.DB.prepare(`SELECT user_id FROM employers WHERE user_id = ?`).bind(employerUserId).first();
+  if (!exists) return json({ error: "Employer not found" }, 404);
+  const status = action === "approve" ? "verified" : "rejected";
+  await env.DB.prepare(`UPDATE employers SET verification_status = ?, verified_at = ?, updated_at = ? WHERE user_id = ?`)
+    .bind(status, status === "verified" ? nowIso() : null, nowIso(), employerUserId).run();
+  return json({ employer_user_id: employerUserId, verification_status: status });
 }
 
 function normalizeImportedJob(source, raw) {
@@ -351,10 +389,21 @@ export default {
       if (!env.DB) return json({ error: "Database is not configured" }, 503);
       if (url.pathname === "/api/v1/jobs" && request.method === "GET") return await listJobs(request, env);
       if (url.pathname === "/api/v1/payments/stripe/webhook" && request.method === "POST") return await stripeWebhook(request, env);
+      const employerVerification = /^\/api\/v1\/admin\/employers\/([^/]+)\/verify$/.exec(url.pathname);
+      if (employerVerification && request.method === "POST") return await moderateEmployer(request, env, identity(request), decodeURIComponent(employerVerification[1]));
       const moderation = /^\/api\/v1\/admin\/jobs\/([0-9a-f-]+)\/moderate$/i.exec(url.pathname);
       if (moderation && request.method === "POST") return await moderateJob(request, env, identity(request), moderation[1]);
-      if (url.pathname === "/api/v1/employer/jobs" || url.pathname.startsWith("/api/v1/employer/jobs/")) {
+      if (url.pathname === "/api/v1/employer/jobs" || url.pathname.startsWith("/api/v1/employer/jobs/") || url.pathname === "/api/v1/employer/company-verification" || url.pathname === "/api/v1/employer/profile") {
         const user = identity(request);
+        if (url.pathname === "/api/v1/employer/profile" && request.method === "GET") {
+          if (!user) return json({ error: "Sign in is required for employer actions" }, 401);
+          return await employerProfile(env, user);
+        }
+        if (url.pathname === "/api/v1/employer/company-verification" && request.method === "POST") {
+          if (!user) return json({ error: "Sign in is required for employer actions" }, 401);
+          await ensureEmployer(env.DB, user);
+          return await requestCompanyVerification(request, env, user);
+        }
         const pathId = /^\/api\/v1\/employer\/jobs\/([0-9a-f-]+)$/i.exec(url.pathname)?.[1];
         return await employerJobs(request, env, user, pathId);
       }
@@ -370,4 +419,4 @@ export default {
   }
 };
 
-export { aiSignals, normalizeImportedJob, validateJob, verifyStripeSignature };
+export { aiSignals, normalizeImportedJob, runIngestion, validateJob, verifyStripeSignature };

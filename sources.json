@@ -1,0 +1,26 @@
+[
+  {
+    "ats": "jobtech",
+    "source_id": "se-jobtech-ai",
+    "provider": "Arbetsförmedlingen / JobTech",
+    "query": "AI",
+    "limit": 50,
+    "max_pages": 2
+  },
+  {
+    "ats": "jobtech",
+    "source_id": "se-jobtech-artificiell-intelligens",
+    "provider": "Arbetsförmedlingen / JobTech",
+    "query": "artificiell intelligens",
+    "limit": 50,
+    "max_pages": 2
+  },
+  {
+    "ats": "jobtech",
+    "source_id": "se-jobtech-maskininlarning",
+    "provider": "Arbetsförmedlingen / JobTech",
+    "query": "maskininlärning",
+    "limit": 50,
+    "max_pages": 2
+  }
+]

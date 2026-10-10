@@ -5,8 +5,10 @@ Signal Jobs is a focused job discovery board for software developers who build w
 ## What's here
 
 - `index.html` — responsive listings platform. Saved jobs and imported listings persist in this browser.
-- `scraper.py` — dependency-free Python collector for public Greenhouse, Lever, and Ashby job boards.
-- `boards.json` — editable sample board configuration.
+- `scraper.py` — dependency-free collector for public Greenhouse, Lever, and Ashby boards, Sweden's JobTech/Arbetsförmedlingen search API, and USAJOBS (API key required).
+- `boards.json` — editable public ATS board configuration.
+- `sources.json` — sample public employment-service queries.
+- `docs/` — product vision, architecture, source policy, and staged roadmap for the global marketplace.
 
 The six listings shown before importing are illustrative preview records, not verified current openings. The scraper reads live public ATS feeds when you run it and writes the resulting records to `jobs.json`.
 
@@ -15,18 +17,18 @@ The six listings shown before importing are illustrative preview records, not ve
 Python 3.10+ is recommended. No pip packages are required.
 
 ```bash
-python3 scraper.py --boards boards.json --out jobs.json
+python3 scraper.py --boards boards.json --sources sources.json --out jobs.json
 ```
 
 By default, the scraper keeps jobs whose descriptions contain AI development signals. Include all jobs from configured boards with:
 
 ```bash
-python3 scraper.py --boards boards.json --out jobs.json --include-non-ai
+python3 scraper.py --boards boards.json --sources sources.json --out jobs.json --include-non-ai
 ```
 
 Import `jobs.json` using **Import jobs** in the platform. The JSON is shaped as `{ "generated_at": "…", "count": 0, "jobs": [], "errors": [] }`.
 
-## Configure company boards
+## Configure public sources
 
 Add objects to `boards.json` with an ATS type, its public board identifier, and a display name:
 
@@ -40,9 +42,19 @@ Add objects to `boards.json` with an ATS type, its public board identifier, and 
 
 Board identifiers are the public slugs used in the employer's hosted career page. The collector does not bypass logins or access controls. Some boards may be inactive, renamed, rate-limited, or unavailable; failures are listed in the output's `errors` array and printed to stderr. Respect each employer's terms and rate limits before increasing crawl frequency.
 
+`sources.json` accepts JobTech/Arbetsförmedlingen searches, for example:
+
+```json
+[
+  {"ats":"jobtech", "source_id":"se-ai", "provider":"JobTech", "query":"AI", "limit":50, "max_pages":2}
+]
+```
+
+It also accepts USAJOBS searches. Set `USAJOBS_API_KEY` and `USAJOBS_USER_AGENT` in the environment before configuring `{ "ats":"usajobs", "query":"AI software" }`. Do not commit API credentials. Country-specific services, aggregators, and commercial job boards often impose different API, attribution, caching, and redistribution rules; add each connector only after checking its official terms. This collector intentionally does not scrape search-engine result pages or bypass access controls.
+
 ## Refresh on a schedule
 
-For a personal data refresh, schedule the command with your OS task scheduler (for example, a daily cron job) and keep the output file available for import. The hosted site is static: it does not run a background scraper or publish newly scraped data automatically. A later server-backed version can add scheduled ingestion, durable shared storage, and alerts.
+For a local data refresh, schedule the command with your OS task scheduler and keep the output file available for import. The hosted site is a static alpha: it does not run a background scraper, shared database, sign-in, payments, or employer self-service yet. The marketplace architecture and launch roadmap are in `docs/`; these product capabilities need a server-backed application before paid job posting can be offered.
 
 ## Matching signals
 

@@ -112,6 +112,8 @@ async function employerJobs(request, env, user, jobId) {
       .bind(user.userId).all();
     return json({ jobs: result.results ?? [] });
   }
+  const checkout = /^\/api\/v1\/employer\/jobs\/([0-9a-f-]+)\/checkout$/i.exec(new URL(request.url).pathname);
+  if (request.method === "POST" && checkout && !jobId) return startCheckout(request, env, user, checkout[1]);
   if (request.method === "POST" && !jobId) {
     const job = validateJob(await readJson(request));
     const id = uid();
@@ -120,8 +122,6 @@ async function employerJobs(request, env, user, jobId) {
       .bind(id, user.userId, job.title, job.companyName, job.description, job.applyUrl, job.location, job.countryCode, job.workMode, job.employmentType, job.salaryMin, job.salaryMax, job.salaryCurrency || null).run();
     return json({ job: { id, ...job, status: "draft" } }, 201);
   }
-  const match = /^\/api\/v1\/employer\/jobs\/([0-9a-f-]+)\/checkout$/i.exec(new URL(request.url).pathname);
-  if (request.method === "POST" && match && !jobId) return startCheckout(request, env, user, match[1]);
   if (jobId && request.method === "GET") {
     const result = await env.DB.prepare(`SELECT id, title, company_name, description, apply_url, location, country_code, work_mode, employment_type, salary_min, salary_max, salary_currency, status, package_code, expires_at, created_at FROM employer_jobs WHERE id = ? AND employer_user_id = ?`)
       .bind(jobId, user.userId).first();

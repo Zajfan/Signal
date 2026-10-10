@@ -60,3 +60,12 @@ test("employer draft creation requires a signed-in identity and persists an owne
   assert.match(calls[1].sql, /INSERT INTO employer_jobs/);
   assert.equal(calls[1].params[1], "user-42");
 });
+
+test("checkout endpoint remains a payment route and is disabled until fixed server prices exist", async () => {
+  const DB = { prepare(sql) { return { sql, bind() { return this; }, async run() { return { meta: { changes: 1 } }; } }; } };
+  const response = await worker.fetch(new Request("https://signal.example/api/v1/employer/jobs/123e4567-e89b-12d3-a456-426614174000/checkout", {
+    method: "POST", headers: { "content-type": "application/json", "oai-authenticated-user-id": "user-42", "oai-authenticated-user-email": "employer@example.com" }, body: JSON.stringify({ package_code: "standard" })
+  }), { DB }, {});
+  assert.equal(response.status, 503);
+  assert.match((await response.json()).error, /not configured/);
+});

@@ -28,7 +28,14 @@ The Worker needs a D1 `DB` binding. Configure these values as hosted secrets or 
 
 - `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` as secrets.
 - `STRIPE_PRICE_STANDARD` and `STRIPE_PRICE_FEATURED` as Stripe Price IDs after package prices are chosen.
+- `USAJOBS_API_KEY` and `USAJOBS_USER_AGENT` as runtime values when the USAJOBS API key is granted.
 - `INGEST_SOURCES` as a JSON array of reviewed, enabled feeds. Each entry needs `source_id`, `ats`, and `permission_basis`; ATS entries also need a public `board`. Do not enable a source until its terms/redistribution permission are reviewed.
+
+Example for an approved JobTech query:
+
+```json
+[{"source_id":"se-jobtech-ai","ats":"jobtech","label":"Arbetsförmedlingen JobTech","country_code":"SE","query":"AI","limit":50,"max_pages":2,"enabled":true,"permission_basis":"CC0 public JobTech service","terms_url":"https://data.arbetsformedlingen.se/dataservice/data-service-jobsearch/"}]
+```
 
 The checkout route is intentionally unavailable until Stripe credentials and fixed price IDs are configured. No amount comes from the browser. The migration records the provider and package, while Stripe remains the system of record for the charged amount. Refund and tax handling still need to be selected before launch. Set `MODERATOR_USER_IDS` to a comma-separated list of trusted Site user IDs before using the moderator route.
 

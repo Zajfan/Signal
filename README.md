@@ -1,73 +1,69 @@
 # Signal Jobs
 
-Signal Jobs is a focused job discovery board for software developers who build with AI. It combines a simple public ATS scraper with a searchable listings interface, saved jobs, filters, and JSON import.
+A global AI jobs marketplace in local alpha: employer posting and verification, reviewed source ingestion, candidate search, saved jobs and individual job pages. Companies can prepare paid-listing workflows locally; checkout currently simulates payment.
 
-## What's here
+## Run locally
 
-- `index.html` — responsive listings platform. Saved jobs and imported listings persist in this browser.
-- `scraper.py` — dependency-free collector for public Greenhouse, Lever, and Ashby boards, Sweden's JobTech/Arbetsförmedlingen search API, and USAJOBS (API key required).
-- `boards.json` — editable public ATS board configuration.
-- `sources.json` — sample public employment-service queries.
-- `docs/` — product vision, architecture, source policy, and staged roadmap for the global marketplace.
-- `backend/` — D1 schema and a not-yet-deployed Worker API foundation for shared listings, employer posts, paid checkout, moderation, and scheduled ingestion.
+Python 3.10+ is required. No third-party Python packages are needed.
 
-The six listings shown before importing are illustrative preview records, not verified current openings. The scraper reads live public ATS feeds when you run it and writes the resulting records to `jobs.json`.
+```bash
+python3 backend/local_server.py
+```
 
-## Run a scrape
+Open **http://127.0.0.1:8000**. SQLite data persists in `signal.sqlite3` and is ignored by Git. Use `--db /tmp/signal-test.sqlite3 --port 8010` for an isolated instance.
 
-Python 3.10+ is recommended. No pip packages are required.
+| Page | Purpose |
+| --- | --- |
+| `/` | Search jobs by keyword, country, work arrangement, employment type and salary currency; save jobs on this device. |
+| `/jobs/{id}` | Full description, source, freshness and direct application link. |
+| `/employer` | Company verification, job drafts, editing, preview, simulated checkout and posting status. |
+| `/admin` | Company verification and paid-job moderation. |
+| `/sources` | Source health, permission information and imported-job review. |
+
+See [local development](docs/LOCAL_DEVELOPMENT.md) for the complete employer walkthrough. Browsing uses the shared database, with real empty/error states instead of illustrative openings. Drafts and unapproved, rejected or expired listings stay out of public search.
+
+## Collect listings
+
+Supported providers: Greenhouse, Lever (US/EU), Ashby, JobTech/Arbetsförmedlingen, USAJOBS, SmartRecruiters and Recruitee. ATS providers can cover employers worldwide; actual coverage depends on configured and permitted boards. USAJOBS and some Recruitee sites require credentials.
+
+```bash
+cp sources.example.json sources.local.json
+# Configure board identifiers, permission basis and explicitly enabled sources.
+python3 backend/ingestion.py --config sources.local.json
+# Optional continuous local refresh, once an hour:
+python3 backend/ingestion.py --config sources.local.json --interval 3600
+```
+
+Examples are disabled. New listings enter review by default; approve them in `/sources`. Stable provider IDs and canonical application URLs prevent exact duplicates; refreshes preserve takedowns and return changed content to review. See [ingestion setup and provider documentation](docs/INGESTION.md).
+
+The standalone export tool also remains available:
 
 ```bash
 python3 scraper.py --boards boards.json --sources sources.json --out jobs.json
+python3 backend/import_jobs.py jobs.json --permission-basis "Reviewed source terms / license" --source-id local-import
 ```
 
-By default, the scraper keeps jobs whose descriptions contain AI development signals. Include all jobs from configured boards with:
+Use the registry collector for reviewed refresh behavior, source health and scheduling. Do not commit credentials or local source configurations. Public access to an API is not blanket redistribution permission.
+
+## Test
+
+Node.js 22+ is recommended for the existing Worker tests and Playwright:
 
 ```bash
-python3 scraper.py --boards boards.json --sources sources.json --out jobs.json --include-non-ai
+npm install
+npm test
+npx playwright install chromium
+npm run test:browser
 ```
 
-Import `jobs.json` using **Import jobs** in the platform. The JSON is shaped as `{ "generated_at": "…", "count": 0, "jobs": [], "errors": [] }`.
+Browser tests use a disposable database and server, covering company verification → draft editing → simulated payment → approval → public search, candidate filters/details/saving, source review, and mobile/empty/error states. If needed, set `SIGNAL_BROWSER_EXECUTABLE` to an existing Chromium executable.
 
-## Configure public sources
+## Deployment boundary
 
-Add objects to `boards.json` with an ATS type, its public board identifier, and a display name:
+The planned public address is **`https://signal.tnhc.dev`**, with anonymous job browsing and authenticated employer/staff workspaces. See the [public deployment plan](docs/PUBLIC_DEPLOYMENT.md) for runtime, authentication, hosting and domain setup work.
 
-```json
-[
-  {"ats": "greenhouse", "board": "company-board-token", "company": "Company"},
-  {"ats": "lever", "board": "company-site-name", "company": "Company"},
-  {"ats": "ashby", "board": "company-board-name", "company": "Company"}
-]
-```
+This is a functioning **local alpha**, not a launched paid service. Local identity and moderator controls deliberately simulate accounts; do not expose this Python server publicly. Real sign-in, payment prices/secrets, tax/refund policy and production operations remain launch work.
 
-Board identifiers are the public slugs used in the employer's hosted career page. The collector does not bypass logins or access controls. Some boards may be inactive, renamed, rate-limited, or unavailable; failures are listed in the output's `errors` array and printed to stderr. Respect each employer's terms and rate limits before increasing crawl frequency.
+`backend/worker.mjs` and its D1 schema remain the separately tested Cloudflare production foundation. The new local workspace routes are not yet all implemented in that Worker. See [backend setup](backend/README.md), [product vision](docs/PRODUCT_VISION.md), [architecture](docs/MARKETPLACE_ARCHITECTURE.md) and [roadmap](docs/ROADMAP.md). The partner program is planned, including referrals, ATS/data and distribution partners; no commissions or terms are active.
 
-`sources.json` accepts JobTech/Arbetsförmedlingen searches, for example:
-
-```json
-[
-  {"ats":"jobtech", "source_id":"se-ai", "provider":"JobTech", "query":"AI", "limit":50, "max_pages":2}
-]
-```
-
-It also accepts USAJOBS searches. Set `USAJOBS_API_KEY` and `USAJOBS_USER_AGENT` in the environment before configuring `{ "ats":"usajobs", "query":"AI software" }`. Do not commit API credentials. Country-specific services, aggregators, and commercial job boards often impose different API, attribution, caching, and redistribution rules; add each connector only after checking its official terms. This collector intentionally does not scrape search-engine result pages or bypass access controls.
-
-## Refresh on a schedule
-
-For a local data refresh, schedule the command with your OS task scheduler and keep the output file available for import. The hosted site is a static alpha: it does not run a background scraper, shared database, sign-in, payments, or employer self-service yet. The marketplace architecture and launch roadmap are in `docs/`; these product capabilities need a server-backed application before paid job posting can be offered.
-
-## Matching signals
-
-The scraper detects terms such as GitHub Copilot, Cursor, Claude Code, AI agents, AI-assisted / AI-native engineering, generative AI, LLMs, and AI code review. Its match score is a transparent keyword heuristic, not a hiring probability or endorsement. Check the original employer posting for current details and apply there.
-
-## Backend foundation
-
-See [`backend/README.md`](backend/README.md) for the API routes, database migration, required runtime settings, and deployment gates. Run focused checks with:
-
-```bash
-node --check backend/worker.mjs
-node backend/worker.test.mjs
-```
-
-For a runnable local platform, start the SQLite-backed API and listings site with `python3 backend/local_server.py`, then open `http://127.0.0.1:8000`. Import scraper output with `backend/import_jobs.py`; imported records remain private for review unless explicitly published. Local employer identity, moderation, and simulated checkout are development tools only. Production payments and trusted sign-in still require deployment configuration described in `backend/README.md`.
+The client styling and shared layout are adapted from the generated screens preserved under `docs/designs/`. Runtime content comes from the API, not their illustrative design data.

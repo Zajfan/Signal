@@ -22,7 +22,7 @@ AI_TERMS = {
     "claude code": ["claude code"],
     "agent": ["ai agent", "agentic", "coding agent", "software agent"],
 "workflow": ["ai-assisted", "ai assisted", "ai augmented", "ai-augmented", "ai-native", "ai native", "ai first", "ai-first", "ai-powered development", "vibe coding"],
-    "review": ["code review", "review generated code", "code quality"],
+    "review": ["ai code review", "review generated code", "ai-generated code"],
     "machine learning": ["machine learning", "ml engineer", "machine-learning", "maskininlärning", "maskinlärning"],
 "genai": ["generative ai", "generativ ai", "genai", "llm", "large language model", "språkmodell", "ai engineer", "ai software", "ai developer"],
     "ai platform": ["ai infrastructure", "ai platform", "model serving", "mlops", "ml ops"],
@@ -59,6 +59,8 @@ def clean_salary(value: object) -> int | None:
 def date_iso(value: object) -> str:
     if not value:
         return ""
+    if isinstance(value, (int, float)):
+        return datetime.fromtimestamp(value / 1000 if value > 1e11 else value, timezone.utc).date().isoformat()
     raw = str(value)
     try:
         dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
@@ -100,28 +102,80 @@ def source_jobs(board: dict) -> list[dict]:
         result = fetch_json("https://data.usajobs.gov/api/Search?" + urllib.parse.urlencode(params), headers=headers)
         hits = (result.get("SearchResult") or {}).get("SearchResultItems", [])
         return [normalize("usajobs", company, token, raw) for raw in hits]
+    if kind == "smartrecruiters":
+        base = f"https://api.smartrecruiters.com/v1/companies/{urllib.parse.quote(token, safe='')}/postings"
+        limit = max(1, min(int(board.get("limit", 100)), 100))
+        rows = []
+        for page in range(max(1, min(int(board.get("max_pages", 20)), 100))):
+            result = fetch_json(base + "?" + urllib.parse.urlencode({"limit": limit, "offset": page * limit}))
+            entries = result.get("content", [])
+            for entry in entries:
+                detail = fetch_json(base + "/" + urllib.parse.quote(str(entry["id"]), safe=""))
+                rows.append(normalize(kind, company, token, detail))
+            if not entries or len(entries) < limit or (page + 1) * limit >= result.get("totalFound", 0):
+                break
+        return rows
+    if kind == "recruitee":
+        if not re.fullmatch(r"[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?", token):
+            raise ValueError("Recruitee board must be a career-site subdomain")
+        headers = {}
+        if board.get("token_env"):
+            secret = os.getenv(board["token_env"])
+            if not secret: raise ValueError("Configured Recruitee token environment variable is missing")
+            headers["X-Careers-Sites-Token"] = secret
+        data = fetch_json(f"https://{token}.recruitee.com/api/offers", headers=headers)
+        return [normalize(kind, company, token, raw) for raw in data.get("offers", [])]
     if kind == "greenhouse":
         data = fetch_json(f"https://boards-api.greenhouse.io/v1/boards/{urllib.parse.quote(token)}/jobs?content=true")
         raw_jobs = data.get("jobs", [])
     elif kind == "lever":
-        raw_jobs = fetch_json(f"https://api.lever.co/v0/postings/{urllib.parse.quote(token)}?mode=json")
+        host = "api.eu.lever.co" if board.get("region") == "eu" else "api.lever.co"
+        raw_jobs = fetch_json(f"https://{host}/v0/postings/{urllib.parse.quote(token, safe='')}?mode=json")
     elif kind == "ashby":
         data = fetch_json(f"https://api.ashbyhq.com/posting-api/job-board/{urllib.parse.quote(token)}?includeCompensation=true")
         raw_jobs = data.get("jobs", [])
     else:
-        raise ValueError(f"Unsupported source '{kind}'. Supported: greenhouse, lever, ashby, jobtech, usajobs.")
+        raise ValueError(f"Unsupported source '{kind}'. Supported: greenhouse, lever, ashby, jobtech, usajobs, smartrecruiters, recruitee.")
     return [normalize(kind, company, token, raw) for raw in raw_jobs]
 
 
 def normalize(kind: str, company: str, board: str, raw: dict) -> dict:
     currency = None
-    if kind == "jobtech":
+    country = None
+    if kind in ("smartrecruiters", "recruitee"):
+        if kind == "smartrecruiters":
+            title = raw.get("name")
+            company = (raw.get("company") or {}).get("name") or company
+            address = raw.get("location") or {}
+            loc = ", ".join(str(address.get(k)) for k in ("city", "region", "country") if address.get(k))
+            country = address.get("country")
+            url = raw.get("applyUrl", "")
+            source_url = f"https://jobs.smartrecruiters.com/{urllib.parse.quote(board, safe='')}/{urllib.parse.quote(str(raw.get('id', '')), safe='')}"
+            date = raw.get("releasedDate")
+            description = plain(" ".join(str(v.get("text", "")) for v in (raw.get("jobAd", {}).get("sections") or {}).values()))
+            extra = (raw.get("typeOfEmployment") or {}).get("label", "")
+            work_model = "remote" if address.get("remote") else ""
+        else:
+            title = raw.get("title")
+            addresses = raw.get("locations") or [raw]
+            loc = "; ".join(", ".join(str(a.get(k)) for k in ("city", "country") if a.get(k)) for a in addresses)
+            country = next((a.get("country_code") for a in addresses if a.get("country_code")), None)
+            url = raw.get("careers_apply_url") or raw.get("careers_url", "")
+            source_url = raw.get("careers_url", url)
+            date = raw.get("published_at")
+            description = plain(str(raw.get("description", "")) + " " + str(raw.get("requirements", "")))
+            extra = str(raw.get("employment_type", ""))
+            work_model = "remote" if raw.get("remote") else ""
+        salary_min = salary_max = None
+        job_type = "Part-time" if "part" in extra.lower() else "Contract" if "contract" in extra.lower() else "Full-time"
+    elif kind == "jobtech":
         title = raw.get("headline", "")
         employer = raw.get("employer") or {}
         company = employer.get("name") or company
         address = raw.get("workplace_address") or {}
         location = [address.get(k) for k in ("city", "municipality", "region", "country") if address.get(k)]
         loc = ", ".join(dict.fromkeys(location))
+        country = address.get("country_code") or "SE"
         url = raw.get("webpage_url", "")
         source_url = url
         date = raw.get("publication_date") or raw.get("last_publication_date")
@@ -149,6 +203,7 @@ def normalize(kind: str, company: str, board: str, raw: dict) -> dict:
         job_type = "Full-time" if any("full" in x.get("Name", "").lower() for x in detail.get("PositionSchedule", [])) else "Contract"
         work_model = ""
         currency = "USD"
+        country = "US"
     elif kind == "greenhouse":
         title, loc = raw.get("title"), (raw.get("location") or {}).get("name", "")
         url, date = raw.get("absolute_url", ""), raw.get("updated_at") or raw.get("first_published")
@@ -162,23 +217,27 @@ def normalize(kind: str, company: str, board: str, raw: dict) -> dict:
         work_model = ""
     elif kind == "lever":
         title, loc = raw.get("text"), ((raw.get("categories") or {}).get("location") or "")
-        url, date = raw.get("hostedUrl", ""), raw.get("createdAt")
-        source_url = url
+        url, date = raw.get("applyUrl") or raw.get("hostedUrl", ""), raw.get("createdAt")
+        source_url = raw.get("hostedUrl", url)
+        country = raw.get("country")
         description = plain(" ".join([raw.get("description", ""), raw.get("descriptionPlain", ""), raw.get("additional", "")]))
         cats = raw.get("categories") or {}
         extra = " ".join(str(cats.get(k, "")) for k in ("team", "department", "commitment", "workplaceType"))
         salary = (raw.get("salaryRange") or {})
+        currency = salary.get("currency")
         salary_min, salary_max = clean_salary(salary.get("min")), clean_salary(salary.get("max"))
         job_type = "Contract" if "contract" in extra.lower() else "Full-time"
         work_model = str((raw.get("categories") or {}).get("workplaceType", ""))
-    else:
+    elif kind == "ashby":
         title, loc = raw.get("title"), raw.get("location", "")
-        url, date = raw.get("jobUrl", ""), raw.get("publishedAt")
-        source_url = url
+        url, date = raw.get("applyUrl") or raw.get("jobUrl", ""), raw.get("publishedAt")
+        source_url = raw.get("jobUrl", url)
+        country = ((raw.get("address") or {}).get("postalAddress") or {}).get("addressCountry")
         description = plain(" ".join([raw.get("descriptionPlain", ""), raw.get("descriptionHtml", "")]))
         employment_type = raw.get("employmentType", [])
         extra = str(employment_type) if isinstance(employment_type, str) else " ".join(str(x) for x in employment_type if x)
         comp = raw.get("compensation") or {}
+        currency = comp.get("currencyCode")
         salary_min = clean_salary(comp.get("minValue"))
         salary_max = clean_salary(comp.get("maxValue"))
         job_type = "Contract" if "contract" in extra.lower() else "Full-time"
@@ -194,7 +253,8 @@ def normalize(kind: str, company: str, board: str, raw: dict) -> dict:
     work_mode = "Remote" if any(x in model for x in ("remote", "distans", "fully distributed")) else "Hybrid" if any(x in model for x in ("hybrid", "hybridarbete")) else "On-site"
     level_patterns = {"Lead": r"principal|staff|lead", "Senior": r"senior|sr\.?", "Mid": r"mid.?level|intermediate", "Entry": r"junior|entry.?level|graduate"}
     level = next((x for x in ("Lead", "Senior", "Mid", "Entry") if re.search(rf"\b(?:{level_patterns[x]})\b", title.lower())), "Any level")
-    stable_id = f"{kind}:{board}:{raw.get('id') or raw.get('gh_jid') or raw.get('MatchedObjectId') or url}"
+    identity_board = "public" if kind in ("jobtech", "usajobs") else board
+    stable_id = f"{kind}:{identity_board}:{raw.get('id') or raw.get('gh_jid') or raw.get('MatchedObjectId') or url}"
     tags = []
     for label, terms in AI_TERMS.items():
         if any(term in text for term in terms):
@@ -204,9 +264,9 @@ def normalize(kind: str, company: str, board: str, raw: dict) -> dict:
         "id": stable_id, "title": title, "company": company, "location": loc or "Location not listed",
         "work_mode": work_mode, "level": level, "type": job_type, "salary_min": salary_min,
         "salary_max": salary_max, "posted_at": date_iso(date), "url": url,
-        "description": description[:5000], "tags": tags, "focus": matched,
+        "description": description, "tags": tags, "focus": matched,
         "ai_explicit": is_ai, "match": score, "source": kind, "board": board, "source_url": source_url,
-        "currency": currency,
+        "currency": currency, "country_code": str(country).upper() if country and re.fullmatch(r"[A-Za-z]{2}", str(country)) else None,
     }
 
 

@@ -3,3 +3,8 @@ __pycache__/
 .aws/
 .codex/
 *.pyc
+node_modules/
+signal.sqlite3*
+artifacts/
+.superpowers/
+sources.local.json

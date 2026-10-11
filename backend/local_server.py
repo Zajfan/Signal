@@ -3,23 +3,32 @@
 import argparse
 import json
 import mimetypes
-import os
 import re
 import sqlite3
 import uuid
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
+
+from marketplace import AI_TERMS, JOB_FIELDS, absolute_url, required_text, validate_job, validate_unicode
 
 ROOT = Path(__file__).resolve().parent.parent
 DB_DEFAULT = ROOT / "signal.sqlite3"
 MIGRATION = Path(__file__).parent / "migrations" / "0001_marketplace.sql"
-AI_TERMS = re.compile(r"\b(ai|artificial intelligence|machine learning|llm|copilot|cursor|claude code|generative ai|ai-assisted|ai-native|ai agent)\b", re.I)
+EMPLOYER_STATUS_SQL = "CASE WHEN status='published' AND expires_at IS NOT NULL AND datetime(expires_at)<=datetime('now') THEN 'expired' ELSE status END"
 
 def now(): return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+class ClosingConnection(sqlite3.Connection):
+    def __exit__(self, *args):
+        try:
+            return super().__exit__(*args)
+        finally:
+            self.close()
+
+
 def connect(path):
-    db = sqlite3.connect(path)
+    db = sqlite3.connect(path, factory=ClosingConnection)
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA foreign_keys = ON")
     return db
@@ -38,8 +47,11 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status); self.send_header("Content-Type", "application/json; charset=utf-8"); self.send_header("Content-Length", str(len(raw))); self.send_header("Cache-Control", "no-store"); self.end_headers(); self.wfile.write(raw)
     def body(self):
         size = int(self.headers.get("Content-Length", "0"))
-        if size > 1_000_000: raise ValueError("Request body exceeds 1 MB")
-        return json.loads(self.rfile.read(size) or b"{}")
+        if size < 0 or size > 1_000_000: raise ValueError("Request body must be at most 1 MB")
+        data = json.loads(self.rfile.read(size) or b"{}")
+        if not isinstance(data, dict): raise ValueError("Request body must be a JSON object")
+        validate_unicode(data)
+        return data
     def identity(self):
         uid = self.headers.get("X-Local-User-Id", "").strip()
         if not uid: return None
@@ -49,6 +61,14 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path); path = parsed.path; query = parse_qs(parsed.query)
         if path == "/api/v1/health": return self.send_json(200, {"ok": True, "runtime": "local"})
         if path == "/api/v1/jobs": return self.list_jobs(query)
+        if path == "/api/v1/jobs/facets":
+            from search import facets
+            return self.send_json(200, facets(self.db_path))
+        detail = re.fullmatch(r"/api/v1/jobs/([^/]+)", path)
+        if detail:
+            from search import public_job
+            job = public_job(self.db_path, unquote(detail[1]))
+            return self.send_json(200, {"job": job}) if job else self.send_json(404, {"error": "This job is no longer available"})
         if path == "/api/v1/employer/profile" or path == "/api/v1/employer/jobs":
             user = self.identity()
             if not user: return self.send_json(401, {"error": "Set X-Local-User-Id for local development"})
@@ -57,37 +77,45 @@ class Handler(BaseHTTPRequestHandler):
                     db.execute("INSERT INTO employers(user_id,email) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET email=excluded.email", user)
                     profile = dict(db.execute("SELECT user_id,email,company_name,website_url,verification_status,verified_at FROM employers WHERE user_id=?", (user[0],)).fetchone())
                 return self.send_json(200, {"employer": profile})
-            with connect(self.db_path) as db: jobs = [dict(x) for x in db.execute("SELECT id,title,company_name,location,country_code,work_mode,status,package_code,created_at,expires_at FROM employer_jobs WHERE employer_user_id=? ORDER BY created_at DESC", (user[0],))]
+            with connect(self.db_path) as db: jobs = [dict(x) for x in db.execute(f"SELECT id,title,company_name,location,country_code,work_mode,{EMPLOYER_STATUS_SQL} AS status,package_code,created_at,expires_at FROM employer_jobs WHERE employer_user_id=? ORDER BY created_at DESC", (user[0],))]
             return self.send_json(200, {"jobs": jobs})
+        match = re.fullmatch(r"/api/v1/employer/jobs/([^/]+)", path)
+        if match:
+            user = self.identity()
+            if not user: return self.send_json(401, {"error": "Set X-Local-User-Id for local development"})
+            return self.get_job(user, unquote(match[1]))
+        if path in ("/api/v1/admin/employers", "/api/v1/admin/jobs"):
+            if not self.is_admin(): return self.send_json(403, {"error": "Set X-Local-Admin: true for local moderation"})
+            return self.admin_queue(path.rsplit("/", 1)[1])
+        if path in ("/api/v1/admin/sources", "/api/v1/admin/imports"):
+            if not self.is_admin(): return self.send_json(403, {"error": "Local moderator access required"})
+            from ingestion import list_sources, list_imports
+            key = path.rsplit("/", 1)[1]
+            return self.send_json(200, {key: list_sources(self.db_path) if key == "sources" else list_imports(self.db_path)})
         if path.startswith("/api/"): return self.send_json(404, {"error": "Route not found"})
-        target = (self.web_root / ("index.html" if path == "/" else path.lstrip("/"))).resolve()
-        if not target.is_relative_to(self.web_root.resolve()) or not target.is_file(): return self.send_error(404)
-        content = target.read_bytes(); self.send_response(200); self.send_header("Content-Type", mimetypes.guess_type(target.name)[0] or "application/octet-stream"); self.send_header("Content-Length", str(len(content))); self.end_headers(); self.wfile.write(content)
+        return self.serve_static(path)
     def list_jobs(self, query):
-        terms = []; values = []
-        q = query.get("q", [""])[0].strip()
-        if q: terms.append("(title LIKE ? OR company_name LIKE ? OR description LIKE ? OR location LIKE ?)"); values.extend([f"%{q}%"] * 4)
-        country = query.get("country", [""])[0].strip().upper()
-        if country: terms.append("country_code = ?"); values.append(country)
-        mode = query.get("work_mode", [""])[0]
-        if mode in ("remote", "hybrid", "on-site"): terms.append("work_mode = ?"); values.append(mode)
-        where = " AND ".join(terms)
-        limit = min(100, max(1, int(query.get("limit", ["20"])[0]))); offset = max(0, int(query.get("offset", ["0"])[0]))
-        sql = "SELECT id,title,company_name,description,apply_url,location,country_code,work_mode,employment_type,salary_min,salary_max,salary_currency,ai_signals,source_url,source_id,is_featured,created_at FROM (SELECT id,title,company_name,description,apply_url,location,country_code,work_mode,employment_type,salary_min,salary_max,salary_currency,'[]' AS ai_signals,NULL AS source_url,'employer' AS source_id,is_featured,created_at FROM employer_jobs WHERE status='published' UNION ALL SELECT id,title,company_name,description,apply_url,location,country_code,work_mode,employment_type,salary_min,salary_max,salary_currency,ai_signals,source_url,source_id,0 AS is_featured,last_seen_at AS created_at FROM imported_jobs WHERE status='published')"
-        if where: sql += " WHERE " + where
-        sql += " ORDER BY is_featured DESC,created_at DESC LIMIT ? OFFSET ?"; values.extend([limit, offset])
-        try:
-            with connect(self.db_path) as db: jobs = [dict(x) for x in db.execute(sql, values)]
-            for job in jobs:
-                try: job["ai_signals"] = json.loads(job["ai_signals"] or "[]")
-                except (ValueError, TypeError): job["ai_signals"] = []
-            return self.send_json(200, {"jobs": jobs, "limit": limit, "offset": offset})
-        except sqlite3.Error as exc: return self.send_json(500, {"error": str(exc)})
+        from search import search_jobs
+        try: result = search_jobs(self.db_path, query)
+        except ValueError as exc: return self.send_json(400, {"error": str(exc)})
+        return self.send_json(200, result)
+
     def do_POST(self):
         path = urlparse(self.path).path
         try: data = self.body()
         except (ValueError, json.JSONDecodeError) as exc: return self.send_json(400, {"error": str(exc)})
         user = self.identity()
+        imported = re.fullmatch(r"/api/v1/admin/imports/([^/]+)/moderate", path)
+        if imported:
+            if not self.is_admin(): return self.send_json(403, {"error": "Local moderator access required"})
+            from ingestion import review_import
+            try:
+                job = review_import(self.db_path, unquote(imported[1]), data.get("action"))
+            except LookupError:
+                return self.send_json(404, {"error": "Imported job not found"})
+            except ValueError as exc:
+                return self.send_json(400, {"error": str(exc)})
+            return self.send_json(200, {"job": job})
         if path == "/api/v1/employer/jobs":
             if not user: return self.send_json(401, {"error": "Set X-Local-User-Id for local development"})
             return self.create_job(user, data)
@@ -105,51 +133,127 @@ class Handler(BaseHTTPRequestHandler):
             return self.moderate(path.split("/")[-2], data)
         if path.startswith("/api/v1/admin/employers/") and path.endswith("/verify"):
             if not self.is_admin(): return self.send_json(403, {"error": "Set X-Local-Admin: true for local moderation"})
-            return self.moderate_employer(path.split("/")[-2], data)
+            return self.moderate_employer(unquote(path.split("/")[-2]), data)
         return self.send_json(404, {"error": "Route not found"})
     def create_job(self, user, data):
-        required = [str(data.get(k, "")).strip() for k in ("title", "company_name", "description", "apply_url", "location")]
-        title, company, description, apply_url, location = required
-        if not all(required) or len(description) < 40: return self.send_json(400, {"error": "Title, company, 40+ character description, apply URL and location are required"})
-        if not AI_TERMS.search(title + " " + description): return self.send_json(400, {"error": "The role must include an AI or AI-assisted development signal"})
-        if not apply_url.startswith(("https://", "http://")): return self.send_json(400, {"error": "Apply URL must use HTTP or HTTPS"})
-        mode = data.get("work_mode", "on-site")
-        if mode not in ("remote", "hybrid", "on-site"): return self.send_json(400, {"error": "Invalid work mode"})
-        job_id = str(uuid.uuid4()); country = (data.get("country_code") or "").upper() or None
+        try: fields = validate_job(data)
+        except ValueError as exc: return self.send_json(400, {"error": str(exc)})
+        job_id = str(uuid.uuid4())
         with connect(self.db_path) as db:
             db.execute("INSERT INTO employers(user_id,email) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET email=excluded.email", user)
-            db.execute("INSERT INTO employer_jobs(id,employer_user_id,title,company_name,description,apply_url,location,country_code,work_mode,employment_type,salary_min,salary_max,salary_currency,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'draft')", (job_id,user[0],title,company,description,apply_url,location,country,mode,data.get("employment_type","full-time"),data.get("salary_min"),data.get("salary_max"),data.get("salary_currency")))
-        return self.send_json(201, {"job": {"id": job_id,"title": title,"company_name": company,"status":"draft"}})
+            columns = ",".join(JOB_FIELDS)
+            db.execute(f"INSERT INTO employer_jobs(id,employer_user_id,{columns}) VALUES(?,?{',?' * len(JOB_FIELDS)})", (job_id, user[0], *(fields[key] for key in JOB_FIELDS)))
+            job = dict(db.execute("SELECT * FROM employer_jobs WHERE id=?", (job_id,)).fetchone())
+        return self.send_json(201, {"job": job})
+
+    def get_job(self, user, job_id):
+        with connect(self.db_path) as db:
+            row = db.execute(f"SELECT *,{EMPLOYER_STATUS_SQL} AS effective_status FROM employer_jobs WHERE id=? AND employer_user_id=?", (job_id, user[0])).fetchone()
+        if not row: return self.send_json(404, {"error": "Job not found"})
+        job = dict(row)
+        job['status'] = job.pop('effective_status')
+        return self.send_json(200, {"job": job})
+
+    def do_PATCH(self):
+        match = re.fullmatch(r"/api/v1/employer/jobs/([^/]+)", urlparse(self.path).path)
+        if not match: return self.send_json(404, {"error": "Route not found"})
+        user = self.identity()
+        if not user: return self.send_json(401, {"error": "Set X-Local-User-Id for local development"})
+        try: data = self.body()
+        except ValueError as exc: return self.send_json(400, {"error": str(exc)})
+        return self.update_job(user, unquote(match[1]), data)
+
+    def update_job(self, user, job_id, data):
+        with connect(self.db_path) as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT * FROM employer_jobs WHERE id=? AND employer_user_id=?", (job_id, user[0])).fetchone()
+            if not row: return self.send_json(404, {"error": "Job not found"})
+            if row["status"] != "draft": return self.send_json(409, {"error": "Only drafts can be edited"})
+            if not isinstance(data, dict) or any(key not in JOB_FIELDS for key in data):
+                return self.send_json(400, {"error": "Only editable job fields may be updated"})
+            try: fields = validate_job(dict(row) | data)
+            except ValueError as exc: return self.send_json(400, {"error": str(exc)})
+            assignments = ",".join(f"{key}=?" for key in JOB_FIELDS)
+            db.execute(f"UPDATE employer_jobs SET {assignments},updated_at=CURRENT_TIMESTAMP WHERE id=?", (*(fields[key] for key in JOB_FIELDS), job_id))
+            job = dict(db.execute("SELECT * FROM employer_jobs WHERE id=?", (job_id,)).fetchone())
+        return self.send_json(200, {"job": job})
+
+    def admin_queue(self, kind):
+        with connect(self.db_path) as db:
+            if kind == "employers":
+                rows = db.execute("SELECT * FROM employers WHERE verification_status='pending' ORDER BY updated_at,user_id")
+            else:
+                rows = db.execute("SELECT j.*,e.email,e.verification_status FROM employer_jobs j JOIN employers e ON e.user_id=j.employer_user_id WHERE j.status='pending_review' AND EXISTS (SELECT 1 FROM payments p WHERE p.employer_job_id=j.id AND p.employer_user_id=j.employer_user_id AND p.package_code=j.package_code AND p.status='paid') ORDER BY j.updated_at,j.id")
+            queue = [dict(row) for row in rows]
+        return self.send_json(200, {kind: queue})
+
+    def serve_static(self, path):
+        path = unquote(path)
+        if "\x00" in path: return self.send_error(404)
+        root = self.web_root.resolve()
+        if path == "/":
+            target, boundary = root / "index.html", root
+        elif path in ("/employer", "/admin", "/sources") or re.fullmatch(r"/jobs/[^/]+", path):
+            target, boundary = root / "web" / "app.html", root / "web"
+        elif path.startswith("/web/"):
+            target, boundary = root / path.lstrip("/"), root / "web"
+        elif path in ("/scraper.py", "/boards.json", "/sources.json", "/README.md"):
+            target, boundary = root / path.lstrip("/"), root
+        else:
+            return self.send_error(404)
+        if target.is_symlink() or boundary.is_symlink(): return self.send_error(404)
+        target = target.resolve()
+        if not target.is_relative_to(boundary.resolve()) or not target.is_file(): return self.send_error(404)
+        content = target.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", mimetypes.guess_type(target.name)[0] or "application/octet-stream")
+        self.send_header("Content-Length", str(len(content)))
+        self.end_headers()
+        self.wfile.write(content)
+
     def verify_company(self, user, data):
-        name = str(data.get("company_name", "")).strip(); website = str(data.get("website_url", "")).strip()
-        if not name or not website.startswith("https://"): return self.send_json(400, {"error": "Company name and HTTPS website URL are required"})
+        try:
+            name = required_text(data, "company_name")
+            website = absolute_url(required_text(data, "website_url"), https_only=True)
+        except ValueError as exc: return self.send_json(400, {"error": str(exc)})
         with connect(self.db_path) as db:
             db.execute("INSERT INTO employers(user_id,email,company_name,website_url,verification_status) VALUES(?,?,?,?, 'pending') ON CONFLICT(user_id) DO UPDATE SET email=excluded.email,company_name=excluded.company_name,website_url=excluded.website_url,verification_status='pending',verified_at=NULL,updated_at=CURRENT_TIMESTAMP", (user[0],user[1],name,website))
         return self.send_json(202, {"verification_status":"pending"})
     def checkout(self, user, job_id):
         package = "standard"
         with connect(self.db_path) as db:
+            db.execute("BEGIN IMMEDIATE")
             row = db.execute("SELECT j.*,e.company_name AS verified_company,e.verification_status FROM employer_jobs j JOIN employers e ON e.user_id=j.employer_user_id WHERE j.id=? AND j.employer_user_id=?", (job_id,user[0])).fetchone()
-            if not row: return self.send_json(404,{"error":"Job not found"})
-            if row["verification_status"] != "verified" or row["company_name"].casefold()!=str(row["verified_company"] or "").casefold(): return self.send_json(403,{"error":"Verified company name must match the job company before checkout"})
-            if row["status"] not in ("draft","awaiting_payment"): return self.send_json(409,{"error":"Job cannot be checked out in its current state"})
-            db.execute("UPDATE employer_jobs SET status='awaiting_payment',package_code=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",(package,job_id))
-            db.execute("INSERT INTO payments(id,employer_job_id,employer_user_id,provider,idempotency_key,package_code,status) VALUES(?,?,?,'local_demo',?,?,'checkout_open')",(str(uuid.uuid4()),job_id,user[0],str(uuid.uuid4()),package))
-        return self.send_json(200,{"checkout_url":f"/api/v1/local/payments/{job_id}/complete","mode":"local_demo","message":"No real payment will be taken."})
+            if not row: return self.send_json(404, {"error": "Job not found"})
+            if row["verification_status"] != "verified" or row["company_name"].casefold() != str(row["verified_company"] or "").casefold(): return self.send_json(403, {"error": "Verified company name must match the job company before checkout"})
+            if row["status"] not in ("draft", "awaiting_payment"): return self.send_json(409, {"error": "Job cannot be checked out in its current state"})
+            payment = db.execute("SELECT id FROM payments WHERE employer_job_id=? AND employer_user_id=? AND provider='local_demo' AND package_code=? AND status='checkout_open' ORDER BY created_at,id LIMIT 1", (job_id, user[0], package)).fetchone()
+            payment_id = payment["id"] if payment else str(uuid.uuid4())
+            if not payment:
+                db.execute("INSERT INTO payments(id,employer_job_id,employer_user_id,provider,idempotency_key,package_code,status) VALUES(?,?,?,'local_demo',?,?,'checkout_open')", (payment_id, job_id, user[0], str(uuid.uuid4()), package))
+            db.execute("UPDATE employer_jobs SET status='awaiting_payment',package_code=?,updated_at=CURRENT_TIMESTAMP WHERE id=?", (package, job_id))
+        return self.send_json(200, {"checkout_url": f"/api/v1/local/payments/{job_id}/complete", "payment_id": payment_id, "mode": "local_demo", "message": "No real payment will be taken."})
+
     def complete_payment(self, user, job_id):
         with connect(self.db_path) as db:
-            row=db.execute("SELECT id FROM employer_jobs WHERE id=? AND employer_user_id=? AND status='awaiting_payment'",(job_id,user[0])).fetchone()
-            if not row: return self.send_json(404,{"error":"Awaiting-payment job not found"})
-            db.execute("UPDATE payments SET status='paid',updated_at=CURRENT_TIMESTAMP WHERE employer_job_id=? AND employer_user_id=? AND provider='local_demo' AND status='checkout_open'",(job_id,user[0]))
-            db.execute("UPDATE employer_jobs SET status='pending_review',updated_at=CURRENT_TIMESTAMP WHERE id=?",(job_id,))
-        return self.send_json(200,{"job_id":job_id,"status":"pending_review","mode":"local_demo"})
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT * FROM employer_jobs WHERE id=? AND employer_user_id=? AND status='awaiting_payment'", (job_id,user[0])).fetchone()
+            if not row: return self.send_json(404, {"error": "Awaiting-payment job not found"})
+            payment = db.execute("SELECT id FROM payments WHERE employer_job_id=? AND employer_user_id=? AND provider='local_demo' AND status='checkout_open' AND package_code=? ORDER BY created_at,id LIMIT 1", (job_id,user[0],row["package_code"])).fetchone()
+            if not payment: return self.send_json(409, {"error": "Matching open local checkout required"})
+            db.execute("UPDATE payments SET status='paid',updated_at=CURRENT_TIMESTAMP WHERE id=?", (payment["id"],))
+            db.execute("UPDATE employer_jobs SET status='pending_review',updated_at=CURRENT_TIMESTAMP WHERE id=?", (job_id,))
+        return self.send_json(200, {"job_id": job_id, "status": "pending_review", "mode": "local_demo"})
     def moderate(self, job_id, data):
         action=data.get("action")
         if action not in ("approve","reject"): return self.send_json(400,{"error":"Action must be approve or reject"})
         with connect(self.db_path) as db:
+            db.execute("BEGIN IMMEDIATE")
             row=db.execute("SELECT j.*,e.company_name AS verified_company,e.verification_status FROM employer_jobs j JOIN employers e ON e.user_id=j.employer_user_id WHERE j.id=?",(job_id,)).fetchone()
             if not row: return self.send_json(404,{"error":"Job not found"})
             if row["status"]!="pending_review" or row["verification_status"]!="verified" or row["company_name"].casefold()!=str(row["verified_company"] or "").casefold(): return self.send_json(409,{"error":"Verified employer and pending-review job are required"})
+            paid = db.execute("SELECT 1 FROM payments WHERE employer_job_id=? AND employer_user_id=? AND package_code=? AND status='paid' LIMIT 1", (job_id,row["employer_user_id"],row["package_code"])).fetchone()
+            if not paid: return self.send_json(409, {"error": "A matching paid job payment is required"})
             status="published" if action=="approve" else "rejected"; published=now() if status=="published" else None; expires=(datetime.now(timezone.utc)+timedelta(days=30)).isoformat(timespec="seconds").replace("+00:00","Z") if published else None
             db.execute("UPDATE employer_jobs SET status=?,published_at=?,expires_at=?,is_featured=0,updated_at=CURRENT_TIMESTAMP WHERE id=?",(status,published,expires,job_id))
             db.execute("INSERT INTO moderation_events(id,employer_job_id,moderator_user_id,action) VALUES(?,?,?,?)",(str(uuid.uuid4()),job_id,self.moderator_id,action))

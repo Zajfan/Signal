@@ -1,6 +1,8 @@
 # Signal marketplace backend and local runtime
 
-Run the SQLite-backed local app on a development machine with Python 3.9+; no third-party Python packages are required. The Cloudflare Worker remains available as the production runtime foundation.
+Run the SQLite-backed local app on a development machine with Python 3.10+; no third-party Python packages are required. The Cloudflare Worker remains available as the production runtime foundation.
+
+See [the current local walkthrough](../docs/LOCAL_DEVELOPMENT.md) and [ingestion setup](../docs/INGESTION.md) for the new workspaces. Local GET/PATCH employer details, admin queue GET routes, imported-job review, public job details and facets are additions to the Python runtime; the Worker route table below is its separate production foundation.
 
 ## Run Signal locally
 
@@ -89,5 +91,7 @@ An employer can save drafts before verification, but checkout and publication re
 The `scheduled` handler accepts a reviewed `INGEST_SOURCES` JSON array. An enabled source must include `source_id`, `ats`, and a recorded `permission_basis`; each feed is fetched serially, normalized, de-duplicated by source identity, refreshed, and stale records expire after 35 days. Configure a managed recurring Site task only after the Worker and D1 writer are deployed and verified.
 
 ## Deployment status
+
+The intended public deployment is `https://signal.tnhc.dev`; see [the public deployment plan](../docs/PUBLIC_DEPLOYMENT.md). The standalone public runtime needs trusted authentication and parity with the current local APIs before that domain is connected.
 
 The hosted Site is currently static and owner-private. This backend is not live yet: deployment requires converting the Site to a Worker with a D1 binding, applying the migration, confirming the supported sign-in and public audience, configuring Stripe prices/secrets, and connecting the reviewed ingestion schedule. Keep paid post submission disabled until those checks are complete.

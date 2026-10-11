@@ -1,0 +1,75 @@
+[
+  {
+    "source_id": "se-jobtech-ai",
+    "ats": "jobtech",
+    "label": "Arbetsf\u00f6rmedlingen / JobTech",
+    "country_code": "SE",
+    "query": "AI",
+    "limit": 50,
+    "max_pages": 2,
+    "permission_basis": "CC0 public JobSearch data",
+    "terms_url": "https://data.arbetsformedlingen.se/dataservice/jobsearch/",
+    "enabled": false,
+    "auto_publish": false
+  },
+  {
+    "source_id": "greenhouse-company",
+    "ats": "greenhouse",
+    "board": "your-company",
+    "label": "greenhouse company board",
+    "permission_basis": "",
+    "terms_url": "https://developers.greenhouse.io/job-board.html",
+    "enabled": false,
+    "auto_publish": false
+  },
+  {
+    "source_id": "lever-company",
+    "ats": "lever",
+    "board": "your-company",
+    "label": "lever company board",
+    "permission_basis": "",
+    "terms_url": "https://github.com/lever/postings-api",
+    "enabled": false,
+    "auto_publish": false
+  },
+  {
+    "source_id": "ashby-company",
+    "ats": "ashby",
+    "board": "your-company",
+    "label": "ashby company board",
+    "permission_basis": "",
+    "terms_url": "https://developers.ashbyhq.com/docs/public-job-posting-api",
+    "enabled": false,
+    "auto_publish": false
+  },
+  {
+    "source_id": "smartrecruiters-company",
+    "ats": "smartrecruiters",
+    "board": "your-company",
+    "label": "smartrecruiters company board",
+    "permission_basis": "",
+    "terms_url": "https://developers.smartrecruiters.com/docs/endpoints",
+    "enabled": false,
+    "auto_publish": false
+  },
+  {
+    "source_id": "recruitee-company",
+    "ats": "recruitee",
+    "board": "your-company",
+    "label": "recruitee company board",
+    "permission_basis": "",
+    "terms_url": "https://docs.recruitee.com/reference/authentication-1",
+    "enabled": false,
+    "auto_publish": false
+  },
+  {
+    "source_id": "usajobs-ai",
+    "ats": "usajobs",
+    "label": "USAJOBS",
+    "query": "AI software",
+    "permission_basis": "",
+    "terms_url": "https://developer.usajobs.gov/",
+    "enabled": false,
+    "auto_publish": false
+  }
+]

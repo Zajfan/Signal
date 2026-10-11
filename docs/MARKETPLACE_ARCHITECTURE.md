@@ -1,6 +1,6 @@
 # Signal marketplace architecture
 
-**Version:** 0.0.2 (early alpha)
+**Version:** 0.0.4 (local alpha)
 
 ## Product surfaces
 
@@ -53,7 +53,9 @@ Do not enable production checkout until a payment provider, merchant account, cu
 
 ## System shape
 
-The current root-level `index.html` is a browser-only prototype. For a production marketplace, use:
+The intended public origin is **`https://signal.tnhc.dev`**. Candidate search and job pages will be accessible without an account; employer and staff actions require server-enforced authentication and roles. See [the deployment sequence](PUBLIC_DEPLOYMENT.md). Localhost remains the development environment.
+
+The current `index.html` and `web/` client use the Python/SQLite API for employer, operations and candidate workflows. Ingestion runs as a separate serialized CLI process. The Cloudflare Worker remains a separate deployment foundation and does not yet implement every local route. For production, complete:
 
 - responsive web client with public, crawlable job-detail routes;
 - authenticated API for employers, candidates and operations;

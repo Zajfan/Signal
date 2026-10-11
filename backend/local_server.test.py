@@ -22,6 +22,17 @@ class LocalMarketplaceTest(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
+    def test_restart_preserves_existing_data(self):
+        self.handler.verify_company(self.user, {
+            "company_name": "Example Ltd", "website_url": "https://example.test",
+        })
+        initialize(self.db_path)
+        with sqlite3.connect(self.db_path) as db:
+            self.assertEqual(db.execute(
+                "SELECT company_name, verification_status FROM employers WHERE user_id=?",
+                (self.user[0],),
+            ).fetchone(), ("Example Ltd", "pending"))
+
     def test_employer_lifecycle_and_publication_gate(self):
         self.handler.verify_company(self.user, {"company_name": "Example Ltd", "website_url": "https://example.test"})
         self.assertEqual(self.response["status"], 202)

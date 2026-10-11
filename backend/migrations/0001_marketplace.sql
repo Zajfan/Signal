@@ -1,6 +1,6 @@
 PRAGMA foreign_keys = ON;
 
-CREATE TABLE employers (
+CREATE TABLE IF NOT EXISTS employers (
   user_id TEXT PRIMARY KEY,
   email TEXT NOT NULL,
   company_name TEXT,
@@ -11,7 +11,7 @@ CREATE TABLE employers (
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
-CREATE TABLE employer_jobs (
+CREATE TABLE IF NOT EXISTS employer_jobs (
   id TEXT PRIMARY KEY,
   employer_user_id TEXT NOT NULL REFERENCES employers(user_id),
   title TEXT NOT NULL,
@@ -34,7 +34,7 @@ CREATE TABLE employer_jobs (
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
-CREATE TABLE payments (
+CREATE TABLE IF NOT EXISTS payments (
   id TEXT PRIMARY KEY,
   employer_job_id TEXT NOT NULL REFERENCES employer_jobs(id),
   employer_user_id TEXT NOT NULL REFERENCES employers(user_id),
@@ -52,12 +52,12 @@ CREATE TABLE payments (
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
-CREATE TABLE payment_webhook_events (
+CREATE TABLE IF NOT EXISTS payment_webhook_events (
   provider_event_id TEXT PRIMARY KEY,
   received_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
-CREATE TABLE ingest_sources (
+CREATE TABLE IF NOT EXISTS ingest_sources (
   source_id TEXT PRIMARY KEY,
   provider TEXT NOT NULL,
   label TEXT NOT NULL,
@@ -71,7 +71,7 @@ CREATE TABLE ingest_sources (
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
-CREATE TABLE imported_jobs (
+CREATE TABLE IF NOT EXISTS imported_jobs (
   id TEXT PRIMARY KEY,
   source_id TEXT NOT NULL REFERENCES ingest_sources(source_id),
   source_job_id TEXT NOT NULL,
@@ -95,7 +95,7 @@ CREATE TABLE imported_jobs (
   UNIQUE (source_id, source_job_id)
 );
 
-CREATE TABLE moderation_events (
+CREATE TABLE IF NOT EXISTS moderation_events (
   id TEXT PRIMARY KEY,
   employer_job_id TEXT NOT NULL REFERENCES employer_jobs(id),
   moderator_user_id TEXT NOT NULL,
@@ -104,8 +104,8 @@ CREATE TABLE moderation_events (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
-CREATE INDEX employer_jobs_owner_created ON employer_jobs(employer_user_id, created_at DESC);
-CREATE INDEX employer_jobs_publication ON employer_jobs(status, published_at DESC);
-CREATE INDEX imported_jobs_freshness ON imported_jobs(status, last_seen_at DESC);
-CREATE INDEX imported_jobs_country_mode ON imported_jobs(country_code, work_mode);
-CREATE INDEX payments_owner_created ON payments(employer_user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS employer_jobs_owner_created ON employer_jobs(employer_user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS employer_jobs_publication ON employer_jobs(status, published_at DESC);
+CREATE INDEX IF NOT EXISTS imported_jobs_freshness ON imported_jobs(status, last_seen_at DESC);
+CREATE INDEX IF NOT EXISTS imported_jobs_country_mode ON imported_jobs(country_code, work_mode);
+CREATE INDEX IF NOT EXISTS payments_owner_created ON payments(employer_user_id, created_at DESC);

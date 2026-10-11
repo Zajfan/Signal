@@ -70,4 +70,4 @@ node --check backend/worker.mjs
 node backend/worker.test.mjs
 ```
 
-The Worker and schema are implementation foundations only; they are not connected to the current hosted static Site. Do not accept live employer payments until the Worker, database, trusted sign-in, Stripe webhook, moderation access, and actual package prices are configured and verified.
+For a runnable local platform, start the SQLite-backed API and listings site with `python3 backend/local_server.py`, then open `http://127.0.0.1:8000`. Import scraper output with `backend/import_jobs.py`; imported records remain private for review unless explicitly published. Local employer identity, moderation, and simulated checkout are development tools only. Production payments and trusted sign-in still require deployment configuration described in `backend/README.md`.

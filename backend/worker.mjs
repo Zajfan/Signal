@@ -52,6 +52,7 @@ function validateJob(input) {
     salaryCurrency: String(input?.salary_currency ?? "").trim().toUpperCase()
   };
   if (!job.title || !job.companyName || job.description.length < 40 || !job.location) throw new Error("Title, company, location, and a description of at least 40 characters are required");
+  if (!aiSignals(`${job.title} ${job.description}`).length) throw new Error("Job must clearly describe an AI-related role");
   if (!isHttpUrl(job.applyUrl)) throw new Error("Apply URL must use HTTP or HTTPS");
   if (!/^[A-Z]{2}$/.test(job.countryCode)) throw new Error("Country code must be a two-letter ISO code");
   if (!["remote", "hybrid", "on-site"].includes(job.workMode)) throw new Error("Work mode must be remote, hybrid, or on-site");
@@ -153,14 +154,15 @@ async function employerJobs(request, env, user, jobId) {
 
 async function startCheckout(request, env, user, jobId) {
   if (!env.STRIPE_SECRET_KEY || !env.STRIPE_PRICE_STANDARD || !env.STRIPE_PRICE_FEATURED) return json({ error: "Employer checkout is not configured yet" }, 503);
-  const employer = await env.DB.prepare(`SELECT verification_status FROM employers WHERE user_id = ?`).bind(user.userId).first();
-  if (employer?.verification_status !== "verified") return json({ error: "Company verification is required before purchasing a listing" }, 403);
   const body = await readJson(request);
   const packageCode = body?.package_code;
   const priceId = packageCode === "standard" ? env.STRIPE_PRICE_STANDARD : packageCode === "featured" ? env.STRIPE_PRICE_FEATURED : null;
   if (!priceId) return json({ error: "Choose a valid posting package" }, 400);
-  const job = await env.DB.prepare(`SELECT id, status FROM employer_jobs WHERE id = ? AND employer_user_id = ?`).bind(jobId, user.userId).first();
+  const job = await env.DB.prepare(`SELECT j.id, j.status, j.company_name, e.verification_status, e.company_name AS verified_company_name FROM employer_jobs j JOIN employers e ON e.user_id = j.employer_user_id WHERE j.id = ? AND j.employer_user_id = ?`)
+    .bind(jobId, user.userId).first();
   if (!job) return json({ error: "Job not found" }, 404);
+  if (job.verification_status !== "verified") return json({ error: "Company verification is required before purchasing a listing" }, 403);
+  if (job.company_name.trim().toLowerCase() !== String(job.verified_company_name ?? "").trim().toLowerCase()) return json({ error: "Job company must match the verified employer profile" }, 409);
   if (!["draft", "awaiting_payment"].includes(job.status)) return json({ error: "This job cannot be checked out in its current state" }, 409);
   const existing = await env.DB.prepare(`SELECT checkout_url, checkout_expires_at, package_code FROM payments WHERE employer_job_id = ? AND employer_user_id = ? AND status = 'checkout_open' ORDER BY created_at DESC LIMIT 1`)
     .bind(jobId, user.userId).first();
@@ -244,9 +246,10 @@ async function moderateJob(request, env, user, jobId) {
   const action = String(input?.action ?? "");
   const note = cleanText(input?.note, 1000) || null;
   if (!["approve", "reject"].includes(action)) return json({ error: "Action must be approve or reject" }, 400);
-  const job = await env.DB.prepare(`SELECT j.id, j.status, j.package_code, e.verification_status FROM employer_jobs j JOIN employers e ON e.user_id = j.employer_user_id WHERE j.id = ?`).bind(jobId).first();
+  const job = await env.DB.prepare(`SELECT j.id, j.status, j.package_code, j.company_name, e.company_name AS verified_company_name, e.verification_status FROM employer_jobs j JOIN employers e ON e.user_id = j.employer_user_id WHERE j.id = ?`).bind(jobId).first();
   if (!job) return json({ error: "Job not found" }, 404);
   if (job.verification_status !== "verified") return json({ error: "Employer company verification is required before publication" }, 409);
+  if (job.company_name.trim().toLowerCase() !== String(job.verified_company_name ?? "").trim().toLowerCase()) return json({ error: "Job company does not match its verified employer" }, 409);
   if (job.status !== "pending_review") return json({ error: "Only paid jobs awaiting review can be moderated" }, 409);
   const status = action === "approve" ? "published" : "rejected";
   const publishedAt = action === "approve" ? nowIso() : null;

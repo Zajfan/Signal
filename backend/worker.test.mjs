@@ -90,8 +90,7 @@ test("checkout charges a configured server-side Stripe price and persists provid
       return { sql, params: [], bind(...params) { this.params = params; return this; },
         async run() { calls.push({ sql, params: this.params }); return { meta: { changes: 1 } }; },
         async first() {
-          if (sql.includes("FROM employers")) return { verification_status: "verified" };
-          if (sql.includes("FROM employer_jobs")) return { id: ID, status: "draft" };
+          if (sql.includes("FROM employer_jobs j JOIN employers")) return { id: ID, status: "draft", company_name: "Example AB", verified_company_name: "Example AB", verification_status: "verified" };
           return null;
         }
       };
@@ -122,7 +121,7 @@ test("checkout charges a configured server-side Stripe price and persists provid
 test("moderation requires an allowlisted moderator and exposes the featured state after approval", async () => {
   const statements = [];
   const DB = {
-    prepare(sql) { return { sql, params: [], bind(...params) { this.params = params; return this; }, async first() { return { id: "job-1", status: "pending_review", package_code: "featured", verification_status: "verified" }; } }; },
+    prepare(sql) { return { sql, params: [], bind(...params) { this.params = params; return this; }, async first() { return { id: "job-1", status: "pending_review", package_code: "featured", company_name: "Example AB", verified_company_name: "Example AB", verification_status: "verified" }; } }; },
     async batch(items) { statements.push(...items.map((item) => ({ sql: item.sql, params: item.params }))); }
   };
   const url = "https://signal.example/api/v1/admin/jobs/123e4567-e89b-12d3-a456-426614174000/moderate";

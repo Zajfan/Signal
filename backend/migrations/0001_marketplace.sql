@@ -38,7 +38,7 @@ CREATE TABLE payments (
   id TEXT PRIMARY KEY,
   employer_job_id TEXT NOT NULL REFERENCES employer_jobs(id),
   employer_user_id TEXT NOT NULL REFERENCES employers(user_id),
-  provider TEXT NOT NULL CHECK (provider IN ('stripe')),
+  provider TEXT NOT NULL CHECK (provider IN ('stripe', 'local_demo')),
   provider_session_id TEXT UNIQUE,
   checkout_url TEXT,
   checkout_expires_at TEXT,

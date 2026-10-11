@@ -1,6 +1,37 @@
-# Signal marketplace backend foundation
+# Signal marketplace backend and local runtime
 
-This is the first server-side slice for persistent job data, employer drafts, paid checkout, and scheduled source refresh. It is deliberately separate from the current static Site build until the Site is converted to its Worker/D1 deployment profile.
+Run the SQLite-backed local app on a development machine with Python 3.9+; no third-party Python packages are required. The Cloudflare Worker remains available as the production runtime foundation.
+
+## Run Signal locally
+
+From the repository root:
+
+```bash
+python3 backend/local_server.py
+```
+
+Open `http://127.0.0.1:8000`. The server creates `signal.sqlite3` from the shared migration. It binds only to loopback. Employer endpoints accept `X-Local-User-Id` and `X-Local-User-Email`; moderator routes accept `X-Local-Admin: true`. These headers are intentionally spoofable and are only for local testing. The local checkout flow is simulated and never contacts Stripe or charges money.
+
+Use another database or port with `--db /tmp/signal-dev.sqlite3 --port 8010`.
+
+### Import scraper results
+
+```bash
+python3 scraper.py --boards boards.json --sources sources.json --out jobs.json
+python3 backend/import_jobs.py jobs.json --permission-basis "Reviewed source terms / license" --source-id local-ai-boards
+```
+
+Imports default to `needs_review` and stay out of public search. After confirming the source permits redistribution and checking the records, add `--publish` to publish them locally. The source provenance is stored in `ingest_sources`.
+
+### Test employer posting locally
+
+1. Submit company verification with `POST /api/v1/employer/company-verification` using local identity headers.
+2. For local workflow testing only, set `verification_status='verified'` for that employer row in SQLite after reviewing its profile; the production path requires moderator review.
+3. Create a draft with `POST /api/v1/employer/jobs`, then request `/api/v1/employer/jobs/{id}/checkout`.
+4. Complete the simulated payment at the returned `/api/v1/local/payments/{id}/complete` route.
+5. Approve it with `POST /api/v1/admin/jobs/{id}/moderate` and `X-Local-Admin: true`.
+
+Only published jobs appear in `GET /api/v1/jobs`. Employer listings are searchable alongside approved imported jobs.
 
 ## Included
 

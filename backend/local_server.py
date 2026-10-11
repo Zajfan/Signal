@@ -49,6 +49,16 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path); path = parsed.path; query = parse_qs(parsed.query)
         if path == "/api/v1/health": return self.send_json(200, {"ok": True, "runtime": "local"})
         if path == "/api/v1/jobs": return self.list_jobs(query)
+        if path == "/api/v1/employer/profile" or path == "/api/v1/employer/jobs":
+            user = self.identity()
+            if not user: return self.send_json(401, {"error": "Set X-Local-User-Id for local development"})
+            if path.endswith("/profile"):
+                with connect(self.db_path) as db:
+                    db.execute("INSERT INTO employers(user_id,email) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET email=excluded.email", user)
+                    profile = dict(db.execute("SELECT user_id,email,company_name,website_url,verification_status,verified_at FROM employers WHERE user_id=?", (user[0],)).fetchone())
+                return self.send_json(200, {"employer": profile})
+            with connect(self.db_path) as db: jobs = [dict(x) for x in db.execute("SELECT id,title,company_name,location,country_code,work_mode,status,package_code,created_at,expires_at FROM employer_jobs WHERE employer_user_id=? ORDER BY created_at DESC", (user[0],))]
+            return self.send_json(200, {"jobs": jobs})
         if path.startswith("/api/"): return self.send_json(404, {"error": "Route not found"})
         target = (self.web_root / ("index.html" if path == "/" else path.lstrip("/"))).resolve()
         if not target.is_relative_to(self.web_root.resolve()) or not target.is_file(): return self.send_error(404)
@@ -93,6 +103,9 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/v1/admin/jobs/") and path.endswith("/moderate"):
             if not self.is_admin(): return self.send_json(403, {"error": "Set X-Local-Admin: true for local moderation"})
             return self.moderate(path.split("/")[-2], data)
+        if path.startswith("/api/v1/admin/employers/") and path.endswith("/verify"):
+            if not self.is_admin(): return self.send_json(403, {"error": "Set X-Local-Admin: true for local moderation"})
+            return self.moderate_employer(path.split("/")[-2], data)
         return self.send_json(404, {"error": "Route not found"})
     def create_job(self, user, data):
         required = [str(data.get(k, "")).strip() for k in ("title", "company_name", "description", "apply_url", "location")]
@@ -141,6 +154,15 @@ class Handler(BaseHTTPRequestHandler):
             db.execute("UPDATE employer_jobs SET status=?,published_at=?,expires_at=?,is_featured=0,updated_at=CURRENT_TIMESTAMP WHERE id=?",(status,published,expires,job_id))
             db.execute("INSERT INTO moderation_events(id,employer_job_id,moderator_user_id,action) VALUES(?,?,?,?)",(str(uuid.uuid4()),job_id,self.moderator_id,action))
         return self.send_json(200,{"job_id":job_id,"status":status,"expires_at":expires})
+    def moderate_employer(self, user_id, data):
+        action=data.get("action")
+        if action not in ("approve","reject"): return self.send_json(400,{"error":"Action must be approve or reject"})
+        status="verified" if action=="approve" else "rejected"
+        with connect(self.db_path) as db:
+            row=db.execute("SELECT user_id FROM employers WHERE user_id=?",(user_id,)).fetchone()
+            if not row: return self.send_json(404,{"error":"Employer not found"})
+            db.execute("UPDATE employers SET verification_status=?,verified_at=?,updated_at=CURRENT_TIMESTAMP WHERE user_id=?",(status,now() if status=="verified" else None,user_id))
+        return self.send_json(200,{"employer_user_id":user_id,"verification_status":status})
     def do_PUT(self): return self.send_json(405,{"error":"Method not allowed"})
 
 def main():

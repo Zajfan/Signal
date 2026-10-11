@@ -10,6 +10,8 @@ From the repository root:
 python3 backend/local_server.py
 ```
 
+Run its focused SQLite checks with `python3 backend/local_server.test.py`.
+
 Open `http://127.0.0.1:8000`. The server creates `signal.sqlite3` from the shared migration. It binds only to loopback. Employer endpoints accept `X-Local-User-Id` and `X-Local-User-Email`; moderator routes accept `X-Local-Admin: true`. These headers are intentionally spoofable and are only for local testing. The local checkout flow is simulated and never contacts Stripe or charges money.
 
 Use another database or port with `--db /tmp/signal-dev.sqlite3 --port 8010`.
@@ -25,11 +27,22 @@ Imports default to `needs_review` and stay out of public search. After confirmin
 
 ### Test employer posting locally
 
-1. Submit company verification with `POST /api/v1/employer/company-verification` using local identity headers.
-2. For local workflow testing only, set `verification_status='verified'` for that employer row in SQLite after reviewing its profile; the production path requires moderator review.
-3. Create a draft with `POST /api/v1/employer/jobs`, then request `/api/v1/employer/jobs/{id}/checkout`.
-4. Complete the simulated payment at the returned `/api/v1/local/payments/{id}/complete` route.
-5. Approve it with `POST /api/v1/admin/jobs/{id}/moderate` and `X-Local-Admin: true`.
+1. Read `/api/v1/employer/profile` and `/api/v1/employer/jobs` using local identity headers.
+2. Submit company verification with `POST /api/v1/employer/company-verification`.
+3. Approve the company locally with `POST /api/v1/admin/employers/{user_id}/verify` and `X-Local-Admin: true`.
+4. Create a draft with `POST /api/v1/employer/jobs`, then request `/api/v1/employer/jobs/{id}/checkout`.
+5. Complete the simulated payment at the returned `/api/v1/local/payments/{id}/complete` route.
+6. Approve it with `POST /api/v1/admin/jobs/{id}/moderate` and `X-Local-Admin: true`.
+
+Example local company review:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/employer/company-verification \
+  -H 'Content-Type: application/json' -H 'X-Local-User-Id: employer-1' \
+  -d '{"company_name":"Example Ltd","website_url":"https://example.com"}'
+curl -X POST http://127.0.0.1:8000/api/v1/admin/employers/employer-1/verify \
+  -H 'Content-Type: application/json' -H 'X-Local-Admin: true' -d '{"action":"approve"}'
+```
 
 Only published jobs appear in `GET /api/v1/jobs`. Employer listings are searchable alongside approved imported jobs.
 

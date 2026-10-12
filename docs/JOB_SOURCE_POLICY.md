@@ -28,6 +28,12 @@ Signal should grow through dependable, documented coverage. “Global” is a co
 
 USAJOBS documents its Job Search API for commercial job boards, mobile applications and social media sites. It returns currently open announcements, requires an API key, and specifies `Host`, `User-Agent` and `Authorization-Key` headers. Apply for a key and follow its rate limits and terms before enabling the connector. [Search API](https://developer.usajobs.gov/api-reference/get-api-search) · [Authentication](https://developer.usajobs.gov/Guides/Authentication) · [Rate limiting](https://developer.usajobs.gov/Guides/Rate-Limiting) · [Terms](https://developer.usajobs.gov/Guides/Terms-of-Service)
 
+### Global backfill feeds (checked October 12, 2026)
+
+- [Himalayas](https://himalayas.app/api) explicitly permits backfilling a job board through its public API, with visible attribution and links to the original Himalayas listings. Onward distribution to other aggregators is prohibited. Signal uses Himalayas URLs for both source and application handoff and retains source expiry and compensation periods.
+- [Remotive](https://github.com/remotive-com/remote-jobs-api) permits sharing API listings with visible attribution and its original listing URL. Listings must remain accessible without signup and must not be forwarded to third-party job boards. Signal enforces a six-hour request budget across Remotive sources and does not immediately retry failed requests.
+- Imported records default to `allow_syndication: 0`. No external distribution or Google Jobs submission is implemented; future exporters and structured-data feeds must honor that flag and obtain separate rights before distributing.
+
 ### ATS feeds
 
 - [Greenhouse Job Board API](https://docs.greenhouse.io/job-board.html) documents public job-board GET endpoints; application submission is separately authenticated.

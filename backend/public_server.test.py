@@ -44,6 +44,14 @@ class PublicRuntimeTest(unittest.TestCase):
             response['data'] = json.loads(response['body'])
         return response
 
+    def test_readiness_requires_import_metadata_migration(self):
+        with connect(self.path) as db: db.execute('DROP TABLE imported_job_details')
+        with self.assertLogs(level='ERROR'):
+            self.assertEqual(self.request('/api/v1/health')['status'], 503)
+        initialize(self.path)
+        self.assertEqual(self.request('/api/v1/health')['status'], 200)
+        self.assertEqual(self.request('/api/v1/jobs')['status'], 200)
+
     def test_search_pagination_and_provenance(self):
         response = self.request('/api/v1/jobs?limit=1')
         self.assertEqual(response['status'], 200)

@@ -78,7 +78,7 @@ class PublicApplication:
             # Check the tables needed for browsing, not only whether a DB file exists.
             with connect(self.db_path, read_only=True) as db:
                 db.execute('SELECT id FROM employer_jobs LIMIT 1').fetchone()
-                db.execute('SELECT j.id FROM imported_jobs j JOIN ingest_sources s USING(source_id) LIMIT 1').fetchone()
+                db.execute('SELECT j.id,d.expires_at,d.salary_period,d.allow_syndication FROM imported_jobs j JOIN ingest_sources s USING(source_id) LEFT JOIN imported_job_details d ON d.job_id=j.id LIMIT 1').fetchone()
             return self.json(200, {'ok': True, 'runtime': 'public', 'capabilities': CAPABILITIES})
         if path == '/api/v1/jobs':
             return self.json(200, search_jobs(self.db_path, parse_qs(query, max_num_fields=30)))

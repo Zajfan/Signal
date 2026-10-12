@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "python3 backend/local_server.py",
-    "test": "python3 backend/local_server.test.py && python3 backend/ingestion.test.py && python3 backend/search.test.py && python3 backend/public_server.test.py && node backend/worker.test.mjs",
+    "test": "python3 backend/local_server.test.py && python3 backend/ingestion.test.py && python3 backend/ingestion_expansion.test.py && python3 backend/feed_connectors.test.py && python3 backend/discovery.test.py && python3 backend/search.test.py && python3 backend/public_server.test.py && node backend/worker.test.mjs",
     "test:browser": "node tests/browser-smoke.mjs",
     "test:public-browser": "node tests/public-browser-smoke.mjs"
   },

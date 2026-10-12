@@ -35,7 +35,8 @@ export function salary(job) {
   if (job.salary_min == null && job.salary_max == null) return 'Salary not disclosed';
   const format = n => new Intl.NumberFormat('en', {maximumFractionDigits:0}).format(n);
   const amount = job.salary_min != null && job.salary_max != null ? `${format(job.salary_min)}–${format(job.salary_max)}` : job.salary_min != null ? `From ${format(job.salary_min)}` : `Up to ${format(job.salary_max)}`;
-  return `${job.salary_currency || 'Currency not specified'} ${amount}`;
+  const period = {hourly:'hour',daily:'day',weekly:'week',biweekly:'two weeks',fortnightly:'two weeks',monthly:'month',yearly:'year',annually:'year',annual:'year'}[job.salary_period];
+  return `${job.salary_currency || 'Currency not specified'} ${amount}${period ? ` / ${period}` : ''}`;
 }
 export function dateLabel(value) {
   const date = new Date(value?.includes('T') ? value : value?.replace(' ', 'T') + 'Z');

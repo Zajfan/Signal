@@ -1,6 +1,17 @@
 [
   {"ats": "greenhouse", "board": "anthropic", "company": "Anthropic"},
-  {"ats": "greenhouse", "board": "replit", "company": "Replit"},
-  {"ats": "lever", "board": "cursor", "company": "Cursor"},
-  {"ats": "ashby", "board": "openai", "company": "OpenAI"}
+  {"ats": "greenhouse", "board": "openai", "company": "OpenAI"},
+  {"ats": "greenhouse", "board": "2k", "company": "2K"},
+  {"ats": "greenhouse", "board": "6sense", "company": "6sense"},
+  {"ats": "greenhouse", "board": "affinipay1", "company": "Affinipay"},
+  {"ats": "greenhouse", "board": "projectaservicesgmbhcokg", "company": "Projekt A Services"},
+  {"ats": "greenhouse", "board": "66degrees", "company": "66degrees"},
+  {"ats": "greenhouse", "board": "3cloud", "company": "3Cloud"},
+  {"ats": "greenhouse", "board": "10alabs", "company": "10a Labs"},
+  {"ats": "lever", "board": "infrastructureandcapitalprojects", "company": "Infrastructure and Capital Projects"},
+  {"ats": "lever", "board": "acceldata", "company": "Acceldata"},
+  {"ats": "lever", "board": "activecampaign", "company": "ActiveCampaign"},
+  {"ats": "lever", "board": "achievers", "company": "Achievers"},
+  {"ats": "lever", "board": "100ms", "company": "100ms"},
+  {"ats": "lever", "board": "360learning", "company": "360Learning"}
 ]

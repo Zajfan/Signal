@@ -6,14 +6,14 @@ from local_server import connect
 PUBLIC = '''SELECT id,title,company_name,description,apply_url,location,country_code,work_mode,employment_type,
  salary_min,salary_max,salary_currency,'[]' ai_signals,apply_url source_url,'employer' source_id,
  'Employer posted' source_label,'employer' source_kind,is_featured,COALESCE(published_at,created_at) created_at,
- COALESCE(published_at,created_at) last_seen_at,expires_at
+ COALESCE(published_at,created_at) last_seen_at,expires_at,'annual' salary_period,0 allow_syndication
  FROM employer_jobs WHERE status='published' AND (expires_at IS NULL OR datetime(expires_at)>datetime('now'))
  UNION ALL
  SELECT j.id,j.title,j.company_name,j.description,j.apply_url,j.location,j.country_code,j.work_mode,j.employment_type,
  j.salary_min,j.salary_max,j.salary_currency,j.ai_signals,j.source_url,j.source_id,s.label source_label,
- 'imported' source_kind,0 is_featured,j.first_seen_at created_at,j.last_seen_at,NULL expires_at
- FROM imported_jobs j JOIN ingest_sources s USING(source_id)
- WHERE j.status='published' AND datetime(j.last_seen_at)>=datetime('now','-35 days') AND trim(s.permission_basis)<>''
+ 'imported' source_kind,0 is_featured,j.first_seen_at created_at,j.last_seen_at,d.expires_at,d.salary_period,COALESCE(d.allow_syndication,0) allow_syndication
+ FROM imported_jobs j JOIN ingest_sources s USING(source_id) LEFT JOIN imported_job_details d ON d.job_id=j.id
+ WHERE j.status='published' AND (d.expires_at IS NULL OR datetime(d.expires_at)>datetime('now')) AND datetime(j.last_seen_at)>=datetime('now','-35 days') AND trim(s.permission_basis)<>''
 '''
 
 

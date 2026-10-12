@@ -25,6 +25,16 @@ Open `http://127.0.0.1:8001`. The initialized database has no jobs. Public reque
 
 Keep the existing local employer/operations app at port 8000. Production sign-in, company accounts and real payments still need implementation before those actions are offered publicly. Ingestion runs in its own process against an explicitly selected database; new source records still require review by default. Do not expose the local development app as a workaround for missing public staff access.
 
+## Upgrade an existing database
+
+Back up the database with SQLite's backup facility, then apply the additive migrations before restarting Gunicorn. Substitute the actual configured database path:
+
+```bash
+PYTHONPATH=backend .venv-public/bin/python -c 'from pathlib import Path; from local_server import initialize; initialize(Path("signal-public.sqlite3"))'
+```
+
+Migration `0002_import_details.sql` is required for feed expiry and salary metadata. Public requests never migrate/write data; readiness returns 503 for an unmigrated schema. Current migrations are idempotent and are also applied by local startup and ingestion.
+
 ## Keep the public process running with systemd
 
 The user service template expects a stable project link at `~/.local/share/signal` and a private environment file. These commands install the unit but do not change DNS or open firewall ports:

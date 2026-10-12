@@ -24,7 +24,7 @@ See [local development](docs/LOCAL_DEVELOPMENT.md) for the complete employer wal
 
 ## Collect listings
 
-Supported providers: Greenhouse, Lever (US/EU), Ashby, JobTech/Arbetsförmedlingen, USAJOBS, SmartRecruiters and Recruitee. ATS providers can cover employers worldwide; actual coverage depends on configured and permitted boards. USAJOBS and some Recruitee sites require credentials.
+Supported providers: Greenhouse, Lever (US/EU), Ashby, JobTech/Arbetsförmedlingen, USAJOBS, SmartRecruiters, Recruitee, Himalayas and Remotive. ATS providers can cover employers worldwide; actual coverage depends on configured and permitted boards. USAJOBS and some Recruitee sites require credentials.
 
 ```bash
 cp sources.example.json sources.local.json
@@ -34,7 +34,7 @@ python3 backend/ingestion.py --config sources.local.json
 python3 backend/ingestion.py --config sources.local.json --interval 3600
 ```
 
-Examples are disabled. New listings enter review by default; approve them in `/sources`. Stable provider IDs and canonical application URLs prevent exact duplicates; refreshes preserve takedowns and return changed content to review. See [ingestion setup and provider documentation](docs/INGESTION.md).
+Examples are disabled. New listings enter review by default; approve them in `/sources`. Stable provider IDs and canonical application URLs prevent exact duplicates; refreshes preserve takedowns and return changed content to review. See [ingestion setup and provider documentation](docs/INGESTION.md). The [employer source catalogue](docs/SOURCE_CATALOGUE.md) contains 9,935 real board candidates with provenance; reachability and permission are tracked separately from enabled collection.
 
 The standalone export tool also remains available:
 

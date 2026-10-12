@@ -35,7 +35,9 @@ def connect(path, *, read_only=False):
     return db
 def initialize(path):
     path.parent.mkdir(parents=True, exist_ok=True)
-    with connect(path) as db: db.executescript(MIGRATION.read_text())
+    with connect(path) as db:
+        for migration in sorted(MIGRATION.parent.glob("*.sql")):
+            db.executescript(migration.read_text())
 
 class Handler(BaseHTTPRequestHandler):
     db_path = DB_DEFAULT

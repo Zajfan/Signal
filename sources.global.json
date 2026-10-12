@@ -1,0 +1,82 @@
+[
+  {
+    "source_id": "se-jobtech-ai",
+    "ats": "jobtech",
+    "label": "Arbetsförmedlingen / JobTech",
+    "country_code": "SE",
+    "query": "AI",
+    "limit": 100,
+    "max_pages": 10,
+    "permission_basis": "CC0 public JobSearch data",
+    "terms_url": "https://data.arbetsformedlingen.se/dataservice/jobsearch/",
+    "enabled": true,
+    "auto_publish": true,
+    "refresh_interval_seconds": 21600,
+    "terms_reviewed_at": "2026-10-12"
+  },
+  {
+    "source_id": "global-himalayas-ml",
+    "ats": "himalayas",
+    "label": "Himalayas",
+    "query": "machine learning",
+    "max_pages": 100,
+    "refresh_interval_seconds": 86400,
+    "permission_basis": "Public API explicitly permits job-board backfill with visible Himalayas attribution and original listing link; no onward syndication",
+    "terms_url": "https://himalayas.app/api",
+    "enabled": true,
+    "auto_publish": true,
+    "terms_reviewed_at": "2026-10-12"
+  },
+  {
+    "source_id": "global-remotive",
+    "ats": "remotive",
+    "label": "Remotive",
+    "refresh_interval_seconds": 21600,
+    "permission_basis": "Public API sharing allowed with visible Remotive attribution and original listing link; no signup gate or onward syndication",
+    "terms_url": "https://github.com/remotive-com/remote-jobs-api",
+    "enabled": true,
+    "auto_publish": true,
+    "terms_reviewed_at": "2026-10-12"
+  },
+  {
+    "source_id": "global-jobicy-ai",
+    "ats": "jobicy",
+    "label": "Jobicy",
+    "query": "machine learning",
+    "limit": 100,
+    "max_pages": 10,
+    "refresh_interval_seconds": 21600,
+    "permission_basis": "Public API explicitly permits redistribution with visible Jobicy attribution and direct link to original listing; no onward syndication",
+    "terms_url": "https://jobicy.com/apidocs",
+    "enabled": true,
+    "auto_publish": true,
+    "terms_reviewed_at": "2026-10-12"
+  },
+  {
+    "source_id": "global-remoteok-ai",
+    "ats": "remoteok",
+    "label": "RemoteOK",
+    "query": "AI",
+    "limit": 500,
+    "refresh_interval_seconds": 21600,
+    "permission_basis": "Public API for remote jobs; attribution via original listing link required",
+    "terms_url": "https://remoteok.com/api",
+    "enabled": true,
+    "auto_publish": true,
+    "terms_reviewed_at": "2026-10-12"
+  },
+  {
+    "source_id": "global-arbeitnow-ai",
+    "ats": "arbeitnow",
+    "label": "Arbeitnow",
+    "query": "AI",
+    "limit": 500,
+    "max_pages": 10,
+    "refresh_interval_seconds": 21600,
+    "permission_basis": "Free public API for jobs; link back to Arbeitnow.com required per terms of service",
+    "terms_url": "https://www.arbeitnow.com/blog/job-board-api",
+    "enabled": true,
+    "auto_publish": true,
+    "terms_reviewed_at": "2026-10-12"
+  }
+]

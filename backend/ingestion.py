@@ -9,6 +9,7 @@ import sys
 import threading
 import uuid
 from pathlib import Path
+from datetime import datetime, timezone
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -17,7 +18,7 @@ from scraper import source_jobs
 from local_server import initialize, connect, now
 from marketplace import absolute_url
 
-PROVIDERS = {'greenhouse', 'lever', 'ashby', 'jobtech', 'usajobs', 'smartrecruiters', 'recruitee'}
+PROVIDERS = {'greenhouse', 'lever', 'ashby', 'jobtech', 'usajobs', 'smartrecruiters', 'recruitee', 'himalayas', 'remotive', 'jobicy', 'remoteok', 'arbeitnow'}
 TRACKING = {'gclid', 'fbclid', 'msclkid', 'source', 'referrer'}
 COLUMNS = ('title', 'company_name', 'description', 'source_url', 'apply_url', 'location', 'country_code', 'work_mode', 'employment_type', 'salary_min', 'salary_max', 'salary_currency', 'ai_signals')
 
@@ -41,7 +42,7 @@ def validate_sources(sources):
         if not isinstance(permission, str) or (s['enabled'] and not permission.strip()):
             raise ValueError('Enabled sources need a reviewed permission_basis')
         s['permission_basis'] = permission.strip()
-        if s['ats'] not in ('jobtech', 'usajobs') and (not isinstance(s.get('board'), str) or not s['board'].strip()):
+        if s['ats'] not in ('jobtech', 'usajobs', 'himalayas', 'remotive', 'jobicy', 'remoteok', 'arbeitnow') and (not isinstance(s.get('board'), str) or not s['board'].strip()):
             raise ValueError('ATS sources need a board')
         if s.get('terms_url'): absolute_url(s['terms_url'], https_only=True)
         if 'endpoint' in s: raise ValueError('Custom source endpoints are not allowed in the registry')
@@ -49,6 +50,8 @@ def validate_sources(sources):
             if key in s and (type(s[key]) is not int or not 1 <= s[key] <= 500): raise ValueError(f'Invalid {key}')
         if s.get('region', 'us') not in ('us', 'eu'): raise ValueError('Lever region must be us or eu')
         if s.get('token_env') and not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', s['token_env']): raise ValueError('Invalid token_env')
+        cadence = s.setdefault('refresh_interval_seconds', 86400 if s['ats']=='himalayas' else 0)
+        if type(cadence) is not int or not 0 <= cadence <= 604800: raise ValueError('Invalid refresh_interval_seconds')
         s['label'] = str(s.get('label') or s.get('company') or s['source_id'])
         result.append(s)
     return result
@@ -109,14 +112,48 @@ def normalize_record(row, config):
                 salary_min=salary_min, salary_max=salary_max, salary_currency=currency, ai_signals=json.dumps(signals))
     for value in data.values():
         if isinstance(value, str): value.encode('utf-8')
-    normalized = dict(data, apply_url=canonical_url(url), source_url=canonical_url(original))
+    expires = row.get('expires_at') or None
+    if expires is not None:
+        if not isinstance(expires, str): raise ValueError('Invalid source expiry')
+        try:
+            parsed = datetime.fromisoformat(expires.replace('Z', '+00:00'))
+            if parsed.tzinfo is None: raise ValueError('Expiry needs a timezone')
+        except ValueError as exc: raise ValueError('Invalid source expiry') from exc
+    period = row.get('salary_period') or None
+    if period not in (None, 'hourly', 'daily', 'weekly', 'biweekly', 'fortnightly', 'monthly', 'yearly', 'annually', 'annual'):
+        raise ValueError('Invalid salary period')
+    details = dict(expires_at=expires, salary_period=period, allow_syndication=0)
+    normalized = dict(data, **{k:v for k,v in details.items() if k != 'allow_syndication' and v is not None}, apply_url=canonical_url(url), source_url=canonical_url(original))
     fingerprint = hashlib.sha256(json.dumps(normalized, sort_keys=True).encode()).hexdigest()
-    return identity, data, fingerprint, row.get('posted_at') or row.get('source_updated_at'), row.get('ai_explicit') is True
+    return identity, data, fingerprint, row.get('posted_at') or row.get('source_updated_at'), row.get('ai_explicit') is True and (expires is None or parsed > datetime.now(timezone.utc)), details
+
+
+
+def claim_fetch(db_path, source):
+    """Persist the request budget before network I/O, including failed attempts."""
+    with connect(db_path) as db:
+        db.execute('BEGIN IMMEDIATE')
+        row = db.execute("SELECT (julianday('now')-julianday(last_attempt_at))*86400 age FROM ingest_run_metadata WHERE source_id=?", (source['source_id'],)).fetchone()
+        if row and row['age'] is not None and row['age'] < source['refresh_interval_seconds']:
+            return 'refresh_interval'
+        # Remotive recommends no more than four API requests per day, across all searches.
+        minimum = 21600 if source['ats']=='remotive' else 0
+        provider = db.execute("SELECT (julianday('now')-julianday(last_attempt_at))*86400 age FROM ingest_provider_schedule WHERE provider=?", (source['ats'],)).fetchone()
+        if minimum and provider and provider['age'] < minimum:
+            return 'provider_interval'
+        db.execute('INSERT INTO ingest_run_metadata(source_id,last_attempt_at) VALUES(?,?) ON CONFLICT(source_id) DO UPDATE SET last_attempt_at=excluded.last_attempt_at', (source['source_id'],now()))
+        db.execute('INSERT INTO ingest_provider_schedule(provider,last_attempt_at) VALUES(?,?) ON CONFLICT(provider) DO UPDATE SET last_attempt_at=excluded.last_attempt_at', (source['ats'],now()))
+    return None
 
 
 def run_once(db_path, sources, fetcher=source_jobs):
     sources = validate_sources(sources)
     initialize_ingestion(db_path)
+    # Give the least recently attempted Remotive query the next shared budget slot.
+    with connect(db_path) as db:
+        attempts = {r['source_id']:r['last_attempt_at'] or '' for r in db.execute('SELECT source_id,last_attempt_at FROM ingest_run_metadata')}
+    remotive = iter(sorted((s for s in sources if s['ats']=='remotive'), key=lambda s: attempts.get(s['source_id'],'')))
+    sources = [next(remotive) if s['ats']=='remotive' else s for s in sources]
     summary = dict(sources=[], fetched=0, inserted=0, updated=0, skipped=0, expired=0, errors=0)
     for s in sources:
         sid = s['source_id']
@@ -127,7 +164,9 @@ def run_once(db_path, sources, fetcher=source_jobs):
               enabled=excluded.enabled,updated_at=CURRENT_TIMESTAMP''',
               (sid,s['ats'],s['label'],s.get('country_code'),s['permission_basis'],s.get('terms_url'),int(s['enabled'])))
         result = dict(source_id=sid, fetched=0, inserted=0, updated=0, skipped=0)
-        if s['enabled']:
+        deferred = claim_fetch(db_path, s) if s['enabled'] else None
+        if deferred: result['deferred'] = deferred
+        if s['enabled'] and not deferred:
             try:
                 rows = fetcher(s)
                 if not isinstance(rows, list): raise ValueError('Source must return an array')
@@ -136,7 +175,7 @@ def run_once(db_path, sources, fetcher=source_jobs):
                 result['fetched'] = len(records)
                 with connect(db_path) as db:
                     db.execute('BEGIN IMMEDIATE')
-                    for identity, data, fingerprint, posted, is_ai in records:
+                    for identity, data, fingerprint, posted, is_ai, details in records:
                         canonical = canonical_url(data['apply_url'])
                         old = db.execute('''SELECT j.*,m.fingerprint FROM imported_jobs j LEFT JOIN ingest_job_metadata m ON m.job_id=j.id
                             WHERE j.source_job_id=? OR m.canonical_url=? ORDER BY j.first_seen_at LIMIT 1''', (identity, canonical)).fetchone()
@@ -158,6 +197,7 @@ def run_once(db_path, sources, fetcher=source_jobs):
                             db.execute('INSERT INTO imported_jobs(id,source_id,source_job_id,'+','.join(COLUMNS)+',status,source_updated_at,last_seen_at) VALUES('+','.join('?' for _ in range(len(COLUMNS)+6))+')',
                                        (job_id,sid,identity,*[data[k] for k in COLUMNS],state,posted,now()))
                             result['inserted'] += 1
+                        db.execute('INSERT INTO imported_job_details(job_id,expires_at,salary_period,allow_syndication) VALUES(?,?,?,?) ON CONFLICT(job_id) DO UPDATE SET expires_at=excluded.expires_at,salary_period=excluded.salary_period,allow_syndication=excluded.allow_syndication', (job_id,details['expires_at'],details['salary_period'],details['allow_syndication']))
                         db.execute('INSERT INTO ingest_job_metadata(job_id,canonical_url,fingerprint) VALUES(?,?,?) ON CONFLICT(job_id) DO UPDATE SET canonical_url=excluded.canonical_url,fingerprint=excluded.fingerprint', (job_id,canonical,fingerprint))
                     db.execute('UPDATE ingest_sources SET last_success_at=?,last_error=NULL WHERE source_id=?',(now(),sid))
             except Exception as exc:
@@ -168,12 +208,12 @@ def run_once(db_path, sources, fetcher=source_jobs):
             with connect(db_path) as db:
                 db.execute('''INSERT INTO ingest_run_metadata(source_id,fetched_count,inserted_count,updated_count,last_attempt_at) VALUES(?,?,?,?,?)
                   ON CONFLICT(source_id) DO UPDATE SET fetched_count=excluded.fetched_count,inserted_count=excluded.inserted_count,
-                  updated_count=excluded.updated_count,last_attempt_at=excluded.last_attempt_at''',
+                  updated_count=excluded.updated_count''',
                   (sid,result['fetched'],result['inserted'],result['updated'],now()))
         summary['sources'].append(result)
         for key in ('fetched','inserted','updated','skipped'): summary[key] += result[key]
     with connect(db_path) as db:
-        summary['expired'] = db.execute("UPDATE imported_jobs SET status='expired' WHERE status='published' AND datetime(last_seen_at)<datetime('now','-35 days')").rowcount
+        summary['expired'] = db.execute("UPDATE imported_jobs SET status='expired' WHERE status='published' AND (datetime(last_seen_at)<datetime('now','-35 days') OR id IN (SELECT job_id FROM imported_job_details WHERE datetime(expires_at)<=datetime('now')))").rowcount
         db.execute("UPDATE employer_jobs SET status='expired' WHERE status='published' AND expires_at IS NOT NULL AND datetime(expires_at)<=datetime('now')")
     return summary
 
@@ -200,8 +240,8 @@ def review_import(db_path, job_id, action):
     initialize_ingestion(db_path)
     with connect(db_path) as db:
         db.execute('BEGIN IMMEDIATE')
-        row = db.execute('''SELECT j.*,s.enabled,s.permission_basis,datetime(j.last_seen_at)>=datetime('now','-35 days') fresh
-             FROM imported_jobs j JOIN ingest_sources s USING(source_id) WHERE j.id=?''',(job_id,)).fetchone()
+        row = db.execute('''SELECT j.*,s.enabled,s.permission_basis,(datetime(j.last_seen_at)>=datetime('now','-35 days') AND (d.expires_at IS NULL OR datetime(d.expires_at)>datetime('now'))) fresh
+             FROM imported_jobs j JOIN ingest_sources s USING(source_id) LEFT JOIN imported_job_details d ON d.job_id=j.id WHERE j.id=?''',(job_id,)).fetchone()
         if not row: raise LookupError('Imported job not found')
         if row['status'] != 'needs_review': raise ValueError('Only pending imports can be reviewed')
         if action == 'approve':

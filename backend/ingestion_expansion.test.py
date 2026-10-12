@@ -9,6 +9,7 @@ from unittest.mock import Mock
 from ingestion import run_once, review_import, validate_sources
 from local_server import connect
 from search import search_jobs
+import scraper
 
 
 def source(identity='example', **changes):
@@ -27,6 +28,28 @@ class ExpansionTest(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.db = Path(self.temp.name)/'test.sqlite3'
+
+    def test_query_independent_feed_id_preserves_existing_job_and_takedown(self):
+        config = [dict(source(), ats='jobicy')]
+        raw = dict(id=321, jobTitle='AI engineer', companyName='Acme', jobType=['Full-Time'],
+                   jobDescription='Build machine learning systems', url='https://jobicy.com/jobs/321-ai-engineer')
+        row = scraper.normalize('jobicy', 'Jobicy', 'machine learning', raw)
+        legacy = dict(row, id='jobicy:example:321')
+        self.assertEqual(run_once(self.db, config, lambda _: [legacy])['inserted'], 1)
+        with connect(self.db) as db:
+            identity = db.execute('SELECT id FROM imported_jobs').fetchone()[0]
+            db.execute("UPDATE imported_jobs SET status='removed' WHERE id=?", (identity,))
+        row = scraper.normalize('jobicy', 'Jobicy', 'machine learning',
+                                dict(raw, url='https://jobicy.com/jobs/321-updated-ai-engineer'))
+        result = run_once(self.db, config, lambda _: [row])
+        self.assertEqual((result['inserted'], result['updated']), (0, 1))
+        changed = scraper.normalize('jobicy', 'Jobicy', 'another search',
+                                    dict(raw, url='https://jobicy.com/jobs/321-senior-ai-engineer'))
+        result = run_once(self.db, config, lambda _: [changed])
+        self.assertEqual((result['inserted'], result['updated']), (0, 1))
+        with connect(self.db) as db:
+            records = db.execute('SELECT id,status,source_job_id FROM imported_jobs').fetchall()
+        self.assertEqual([tuple(r) for r in records], [(identity, 'removed', 'jobicy:public:321')])
 
     def test_source_cadence_survives_restart_and_failed_attempt(self):
         config = [source(refresh_interval_seconds=3600)]

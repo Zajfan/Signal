@@ -8,11 +8,17 @@
 
 ## Work
 
-- [ ] Add tested Himalayas and Remotive public-feed adapters, pagination, original-link attribution, expiry metadata and AI filtering. Verify current provider documentation and sample live responses.
-- [ ] Add tested directory importer / board-URL discovery and bounded endpoint verification; persist provenance/license attribution and observed counts. Ship a substantial real candidate catalogue and an honest validation report.
-- [ ] Add source-level refresh intervals and bounded transient retry/pacing so a larger registry can run without hitting every provider hourly. Preserve source isolation and deterministic deduplication.
-- [ ] Expand approved source configuration, collect real data, review relevance/metadata and publish eligible listings under the user's request for more listed jobs. Preserve rejected records and source requirements.
-- [ ] Update coverage documentation, run backend/browser checks, obtain review, commit and push directly to main. Report actual before/after jobs, active sources, reachable boards and candidate counts.
+- [x] Add tested Himalayas and Remotive public-feed adapters, pagination, original-link attribution, expiry metadata and AI filtering. Provider references and previously collected live records are retained.
+- [x] Add tested directory importer / supplied board-URL parser and bounded endpoint verification; persist provenance/license attribution and observed counts. Ship a substantial real candidate catalogue and an honest validation report.
+- [x] Add source-level refresh intervals and bounded transient retry/pacing so a larger registry can run without hitting every provider hourly. Preserve source isolation and deterministic deduplication.
+- [x] Expand source configuration and collect/publish classified jobs through explicitly enabled automatic publication. Local inventory and source accounting are recorded in `docs/SOURCE_CATALOGUE.md`; this does not claim manual review of every job.
+- [x] Complete continuation fixes and coverage documentation; verify 120 backend/Worker tests and both browser suites; resolve independent code-review findings. Delivery follows the project's direct commit/push workflow on `main`.
+
+## Continuation checkpoint
+
+The prior commit implemented collection and added Jobicy, Remote OK and Arbeitnow, but left the source catalogue document absent and two discovery tests failing. The continuation fixes malformed-feed handling, stable IDs, attribution, employment/salary metadata, pagination, discovery title checks and multicast rejection. Database regression coverage checks that legacy Jobicy/Remote OK identities can be matched within their owning source and migrated, preserving takedowns even if a provider URL changes on the first upgraded refresh or a later one. Arbeitnow retains URL-based identity, so a changed provider URL cannot be linked automatically. No local inventory refresh or new publication is part of this verification pass.
+
+Remaining expansion work: career-page HTML link extraction (only supplied URL parsing is implemented), renewed endpoint observations under the stricter validator, and broader manual relevance review. Historical observations overlap and two report filenames misidentify their provider; the catalogue documents actual contents rather than treating those reports as independent batches.
 
 ## Validation
 

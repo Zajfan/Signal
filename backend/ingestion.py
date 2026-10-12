@@ -177,8 +177,13 @@ def run_once(db_path, sources, fetcher=source_jobs):
                     db.execute('BEGIN IMMEDIATE')
                     for identity, data, fingerprint, posted, is_ai, details in records:
                         canonical = canonical_url(data['apply_url'])
+                        legacy_identity = identity
+                        public_prefix = s['ats'] + ':public:'
+                        if s['ats'] in ('jobicy', 'remoteok') and identity.startswith(public_prefix):
+                            legacy_identity = s['ats'] + ':' + (s.get('board') or sid) + ':' + identity[len(public_prefix):]
                         old = db.execute('''SELECT j.*,m.fingerprint FROM imported_jobs j LEFT JOIN ingest_job_metadata m ON m.job_id=j.id
-                            WHERE j.source_job_id=? OR m.canonical_url=? ORDER BY j.first_seen_at LIMIT 1''', (identity, canonical)).fetchone()
+                            WHERE j.source_job_id=? OR m.canonical_url=? OR (j.source_id=? AND j.source_job_id=?)
+                            ORDER BY j.first_seen_at LIMIT 1''', (identity, canonical, sid, legacy_identity)).fetchone()
                         if old and old['source_id'] != sid:
                             # A second source may not transfer ownership or undo a takedown.
                             result['skipped'] += 1; continue
@@ -189,8 +194,10 @@ def run_once(db_path, sources, fetcher=source_jobs):
                             if old['status'] == 'removed': state = 'removed'
                             elif is_ai and old['status'] == 'published' and old['fingerprint'] == fingerprint: state = 'published'
                             job_id = old['id']
-                            db.execute('UPDATE imported_jobs SET '+','.join(f'{key}=?' for key in COLUMNS)+',status=?,source_updated_at=?,last_seen_at=? WHERE id=?',
-                                       (*[data[k] for k in COLUMNS],state,posted,now(),job_id))
+                            # Adopt the current provider identity after a same-source URL match,
+                            # so later URL changes still find this row and preserve takedowns.
+                            db.execute('UPDATE imported_jobs SET '+','.join(f'{key}=?' for key in COLUMNS)+',source_job_id=?,status=?,source_updated_at=?,last_seen_at=? WHERE id=?',
+                                       (*[data[k] for k in COLUMNS],identity,state,posted,now(),job_id))
                             result['updated'] += 1
                         else:
                             job_id = str(uuid.uuid4())

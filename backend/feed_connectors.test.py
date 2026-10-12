@@ -29,6 +29,94 @@ def remotive(**changes):
                 url='https://remotive.com/remote-jobs/software-dev/ai-platform-engineer-123') | changes
 
 
+def jobicy(**changes):
+    return dict(id=321, jobTitle='AI engineer', companyName='Acme', jobGeo='United States',
+                jobType=['Full-Time'], jobDescription='Build machine learning systems',
+                url='https://jobicy.com/jobs/321-ai-engineer', pubDate='2026-10-01T00:00:00Z',
+                salaryMin=50, salaryMax=80, salaryCurrency='USD', salaryPeriod='hourly') | changes
+
+
+def remoteok(**changes):
+    return dict(id='456', position='AI engineer', company='Acme', location='Canada',
+                description='Build machine learning systems', tags=['machine learning'],
+                url='https://remoteok.com/remote-jobs/456', apply_url='https://employer.test/apply',
+                date='2026-10-01T00:00:00Z') | changes
+
+
+def arbeitnow(**changes):
+    return dict(slug='ai-engineer-acme', title='AI engineer', company_name='Acme',
+                location='Germany', remote=False, tags=['machine learning'], job_types=['full_time'],
+                description='Build machine learning systems', created_at=1790812800,
+                url='https://www.arbeitnow.com/jobs/ai-engineer-acme') | changes
+
+
+class NewFeedsTest(unittest.TestCase):
+    def test_malformed_feeds_fail_instead_of_reporting_empty_success(self):
+        for provider, responses in (
+            ('jobicy', ({'error': 'unavailable'}, {'jobs': {}}, {'jobs': [None]})),
+            ('remoteok', ({'error': 'unavailable'}, [None], [{'legal': 'terms'}, None])),
+            ('arbeitnow', ({'error': 'unavailable'}, {'data': {}}, {'data': [None]})),
+        ):
+            for response in responses:
+                with self.subTest(provider=provider, response=response), patch.object(scraper, 'fetch_json', return_value=response):
+                    with self.assertRaises(ValueError):
+                        scraper.source_jobs({'ats': provider})
+
+    def test_new_feed_ids_do_not_depend_on_query(self):
+        for provider, raw, expected in (
+            ('jobicy', jobicy(), 'jobicy:public:321'),
+            ('remoteok', remoteok(apply_url=''), 'remoteok:public:456'),
+            ('arbeitnow', arbeitnow(), 'arbeitnow:public:https://www.arbeitnow.com/jobs/ai-engineer-acme'),
+        ):
+            for query in ('AI', 'machine learning'):
+                with self.subTest(provider=provider, query=query):
+                    self.assertEqual(scraper.normalize(provider, 'Feed', query, raw)['id'], expected)
+
+    def test_jobicy_array_employment_and_reported_salary_period(self):
+        row = scraper.normalize('jobicy', 'Jobicy', 'AI', jobicy())
+        self.assertEqual(row['type'], 'Full-time')
+        self.assertEqual((row['salary_min'], row['salary_max'], row['currency'], row['salary_period']), (50, 80, 'USD', 'hourly'))
+
+    def test_missing_salary_period_stays_unknown(self):
+        for provider, raw in (('jobicy', jobicy(salaryPeriod=None)), ('remoteok', remoteok(apply_url='')), ('arbeitnow', arbeitnow())):
+            with self.subTest(provider=provider):
+                self.assertIsNone(scraper.normalize(provider, 'Feed', 'AI', raw)['salary_period'])
+
+    def test_remoteok_keeps_original_listing_instead_of_external_apply_url(self):
+        row = scraper.normalize('remoteok', 'Remote OK', 'AI', remoteok())
+        self.assertEqual(row['url'], 'https://remoteok.com/remote-jobs/456')
+        self.assertEqual(row['source_url'], row['url'])
+
+    def test_remoteok_does_not_drop_first_job_without_metadata(self):
+        with patch.object(scraper, 'fetch_json', return_value=[remoteok(apply_url='')]):
+            rows = scraper.source_jobs({'ats': 'remoteok'})
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['title'], 'AI engineer')
+
+    def test_jobicy_cursor_pagination_is_bounded_and_deduplicated(self):
+        urls = []
+        def fetch(url):
+            urls.append(url)
+            return {'jobs': [jobicy()], 'nextCursor': 'opaque+/=', 'hasMore': True}
+        with patch.object(scraper, 'fetch_json', fetch):
+            rows = scraper.source_jobs({'ats': 'jobicy', 'max_pages': 5})
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(len(urls), 2)
+        self.assertEqual(parse_qs(urlsplit(urls[1]).query)['cursor'], ['opaque+/='])
+
+    def test_arbeitnow_stops_at_final_page_and_deduplicates(self):
+        pages = []
+        def fetch(url):
+            page = int(parse_qs(urlsplit(url).query)['page'][0])
+            pages.append(page)
+            self.assertLessEqual(page, 2, 'must not request past the final page')
+            return {'data': [arbeitnow()], 'links': {'next': 'https://www.arbeitnow.com/api/job-board-api?page=2' if page == 1 else None}}
+        with patch.object(scraper, 'fetch_json', fetch):
+            rows = scraper.source_jobs({'ats': 'arbeitnow', 'max_pages': 5})
+        self.assertEqual(pages, [1, 2])
+        self.assertEqual(len(rows), 1)
+
+
 class HimalayasTest(unittest.TestCase):
     def test_search_pages_use_response_page_size_and_do_not_send_unsupported_limit(self):
         def fetch(url, headers=None):

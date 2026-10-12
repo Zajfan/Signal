@@ -1,6 +1,6 @@
 # Local source collection
 
-The collector supports Greenhouse, Lever (US and EU), Ashby, JobTech, USAJOBS, SmartRecruiters, Recruitee, Himalayas and Remotive. These are configurable provider connectors, not a claim that Signal has indexed every employer using them. JobTech is a Swedish public service; USAJOBS requires credentials; the ATS connectors cover companies operating in many countries.
+The collector supports Greenhouse, Lever (US and EU), Ashby, JobTech, USAJOBS, SmartRecruiters, Recruitee, Himalayas, Remotive, Jobicy, Remote OK and Arbeitnow. These are configurable provider connectors, not a claim that Signal has indexed every employer using them. JobTech is a Swedish public service; USAJOBS requires credentials; the ATS connectors cover companies operating in many countries.
 
 ## Configure and run
 
@@ -23,7 +23,7 @@ The local-only `ingest_job_metadata`, `ingest_run_metadata` and `import_review_e
 
 ## Global feeds and employer discovery
 
-`data/source-candidates.json` contains real employer board identifiers with directory attribution and provenance. Candidates remain disabled. Use `backend/discovery.py` to import directory updates, extract supported board URLs from supplied career-page HTML, and validate bounded batches. See [the source catalogue](SOURCE_CATALOGUE.md) for commands, licensing and validation results. A reachable board or directory license does not approve republication of its job descriptions.
+`data/source-candidates.json` contains real employer board identifiers with directory attribution and provenance. Candidates remain disabled. Use `backend/discovery.py` to import directory updates, parse supplied supported board URLs, and validate bounded batches. See [the source catalogue](SOURCE_CATALOGUE.md) for commands, licensing and validation results. A reachable board or directory license does not approve republication of its job descriptions.
 
 The global feed examples have explicit API backfill/sharing terms. After reviewing those terms, enable them in your local configuration. Keep `auto_publish` false for manual review, or explicitly set it true to publish AI-classified records from a reviewed source. Classification detects terms in job text; it does not guarantee every role focuses primarily on AI. No arbitrary website crawler or paywall bypass is included.
 
@@ -31,6 +31,9 @@ The global feed examples have explicit API backfill/sharing terms. After reviewi
 
 - [Himalayas API](https://himalayas.app/api): job-board backfill allowed with visible Himalayas attribution and links to its listings. No onward syndication to other job boards. With `query`, uses search pages (20 records/page); without it, follows browse cursors. `max_pages` is bounded at 100. Poll daily. This indexes a bounded window, not every job on Himalayas.
 - [Remotive API](https://github.com/remotive-com/remote-jobs-api): visible attribution and original Remotive URLs required; no signup gate or onward syndication. Fetch the complete available feed once per six hours at most; the provider already delays its public API by 24 hours. No immediate HTTP retry for this provider. Feed size varies and is not the size of Remotive's full website.
+- [Jobicy API](https://github.com/Jobicy/remote-jobs-api): bounded cursor pagination with original Jobicy listing links, array employment types and reported salary periods. Signal caps each page at 100 records and each run at 20 pages. Missing salary periods remain unknown.
+- [Remote OK API](https://remoteok.com/api): preserves the original Remote OK listing URL and source attribution; skips the optional API metadata row. Query filtering is local and results are bounded to 500 jobs.
+- [Arbeitnow API](https://www.arbeitnow.com/blog/job-board-api): numbered pages with deduplication and a stop at the final-page marker; requests remain on the fixed API host. Collection is bounded to 20 pages and 500 records. Provider-side keyword filtering is not assumed; AI classification runs on returned content.
 - HTTP requests use per-host pacing and bounded retries for transient failures; excessive `Retry-After` values end the attempt instead of being ignored. Sources retain errors for operations review.
 
 - [SmartRecruiters Posting API](https://developers.smartrecruiters.com/docs/endpoints): paginated public company postings plus detail requests. Configure `limit` and `max_pages` to bound requests. Details are fetched from the fixed official host.

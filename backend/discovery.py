@@ -164,7 +164,7 @@ def fetch_public_json(url, timeout=20):
     parsed = urlsplit(url)
     addresses = socket.getaddrinfo(parsed.hostname, 443, type=socket.SOCK_STREAM)
     ips = list(dict.fromkeys(item[4][0] for item in addresses))
-    if not ips or any(not ipaddress.ip_address(address).is_global for address in ips):
+    if not ips or any(not ipaddress.ip_address(address).is_global or ipaddress.ip_address(address).is_multicast for address in ips):
         raise ValueError('Provider DNS must resolve exclusively to public network addresses')
     # Connect to a checked address directly; a second DNS lookup cannot change the destination.
     conn = http.client.HTTPSConnection(parsed.hostname, timeout=timeout)
@@ -214,6 +214,9 @@ def count_jobs(provider, payload):
     if provider == 'ashby': rows = [r for r in rows if r.get('isListed', True) is not False]
     ai_count = 0
     for row in rows:
+        title_key = 'text' if provider == 'lever' else 'name' if provider == 'smartrecruiters' else 'title'
+        if not isinstance(row.get(title_key), str) or not row[title_key].strip():
+            raise ValueError('Provider job requires a nonempty title')
         fields = ('title', 'text', 'name', 'content', 'description', 'descriptionPlain', 'descriptionHtml', 'additional')
         text = html.unescape(' '.join(v for k in fields if isinstance((v := row.get(k)), str)))
         text = re.sub(r'<[^>]*>', ' ', text)

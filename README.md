@@ -24,7 +24,7 @@ See [local development](docs/LOCAL_DEVELOPMENT.md) for the complete employer wal
 
 ## Collect listings
 
-Supported providers: Greenhouse, Lever (US/EU), Ashby, JobTech/Arbetsförmedlingen, USAJOBS, SmartRecruiters, Recruitee, Himalayas and Remotive. ATS providers can cover employers worldwide; actual coverage depends on configured and permitted boards. USAJOBS and some Recruitee sites require credentials.
+Supported providers: Greenhouse, Lever (US/EU), Ashby, JobTech/Arbetsförmedlingen, USAJOBS, SmartRecruiters, Recruitee, Himalayas, Remotive, Jobicy, Remote OK and Arbeitnow. ATS providers can cover employers worldwide; actual coverage depends on configured and permitted boards. USAJOBS and some Recruitee sites require credentials.
 
 ```bash
 cp sources.example.json sources.local.json

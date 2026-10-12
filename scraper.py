@@ -330,7 +330,7 @@ def source_jobs(board: dict) -> list[dict]:
             if params:
                 url += "?" + urllib.parse.urlencode(params)
             data = fetch_json(url)
-            entries = data.get("jobs", [])
+            entries = feed_entries(data)
             for raw in entries:
                 row = normalize(kind, company, token, raw)
                 rows[row["id"]] = row
@@ -349,9 +349,9 @@ def source_jobs(board: dict) -> list[dict]:
         limit = max(1, min(int(board.get("limit", 100)), 500))
         url = "https://remoteok.com/api"
         data = fetch_json(url)
-        if not isinstance(data, list) or len(data) < 2:
-            return []
-        entries = data[1:]
+        if not isinstance(data, list) or any(not isinstance(row, dict) for row in data):
+            raise ValueError("RemoteOK response must be an array of objects")
+        entries = data[1:] if data and 'legal' in data[0] and 'id' not in data[0] else data
         query = str(board.get("query", "")).lower()
         if query:
             entries = [e for e in entries if query in str(e.get("position", "")).lower() or query in str(e.get("description", "")).lower() or any(query in str(t).lower() for t in e.get("tags", []))]
@@ -367,22 +367,24 @@ def source_jobs(board: dict) -> list[dict]:
             params["tag"] = board["tag"]
         limit = max(1, min(int(board.get("limit", 100)), 500))
         max_pages = max(1, min(int(board.get("max_pages", 5)), 20))
-        rows = []
+        rows = {}
         for page in range(1, max_pages + 1):
             params["page"] = page
             url = "https://www.arbeitnow.com/api/job-board-api"
             if params:
                 url += "?" + urllib.parse.urlencode(params)
             data = fetch_json(url)
-            entries = data.get("data", [])
+            if not isinstance(data, dict) or not isinstance(data.get("data"), list) or any(not isinstance(row, dict) for row in data['data']):
+                raise ValueError("Arbeitnow response must contain a data array of objects")
+            entries = data['data']
             for raw in entries:
                 row = normalize(kind, company, token, raw)
-                rows.append(row)
-            if not entries or len(entries) < 1:
+                rows[row['id']] = row
+            if not entries or (isinstance(data.get('links'), dict) and data['links'].get('next') is None):
                 break
             if len(rows) >= limit:
                 break
-        return rows[:limit]
+        return list(rows.values())[:limit]
     if kind == "greenhouse":
         data = fetch_json(f"https://boards-api.greenhouse.io/v1/boards/{urllib.parse.quote(token)}/jobs?content=true")
         raw_jobs = data.get("jobs", [])
@@ -549,18 +551,19 @@ def normalize(kind: str, company: str, board: str, raw: dict) -> dict:
         date = raw.get("pubDate")
         description = plain(raw.get("jobDescription", ""))
         extra = str(raw.get("jobType") or "")
-        job_type = feed_employment(extra)
+        employment = raw.get('jobType')
+        job_type = feed_employment(employment[0] if isinstance(employment, list) and employment else employment)
         work_model = "remote"
         currency = raw.get("salaryCurrency") or None
         salary_min = clean_salary(raw.get("salaryMin"))
         salary_max = clean_salary(raw.get("salaryMax"))
-        salary_period = raw.get("salaryPeriod") or "annual"
+        salary_period = raw.get("salaryPeriod") or None
     elif kind == "remoteok":
         if not isinstance(raw.get("id"), (str, int)) or isinstance(raw.get("id"), bool) or not str(raw["id"]).strip():
             raise ValueError("RemoteOK record requires a provider job ID")
         title = raw.get("position")
         company = raw.get("company") or company
-        url = source_url = attributed_url(raw.get("apply_url") or raw.get("url"), "remoteok.com")
+        url = source_url = attributed_url(raw.get("url"), "remoteok.com")
         loc = plain(raw.get("location")) or "Location not listed"
         country = restriction_country(loc)
         date = raw.get("date")
@@ -571,7 +574,7 @@ def normalize(kind: str, company: str, board: str, raw: dict) -> dict:
         salary_min = clean_salary(raw.get("salary_min"))
         salary_max = clean_salary(raw.get("salary_max"))
         currency = None
-        salary_period = "annual"
+        salary_period = None
     elif kind == "arbeitnow":
         title = raw.get("title")
         company = raw.get("company_name") or company
@@ -587,7 +590,7 @@ def normalize(kind: str, company: str, board: str, raw: dict) -> dict:
         work_model = "remote" if raw.get("remote") else "on-site"
         salary_min = salary_max = None
         currency = None
-        salary_period = "annual"
+        salary_period = None
     title = plain(title)
     loc = plain(loc)
     text = f"{title} {description} {extra}".lower()
@@ -600,7 +603,7 @@ def normalize(kind: str, company: str, board: str, raw: dict) -> dict:
     work_mode = "Remote" if any(x in model for x in ("remote", "distans", "fully distributed")) else "Hybrid" if any(x in model for x in ("hybrid", "hybridarbete")) else "On-site"
     level_patterns = {"Lead": r"principal|staff|lead", "Senior": r"senior|sr\.?", "Mid": r"mid.?level|intermediate", "Entry": r"junior|entry.?level|graduate"}
     level = next((x for x in ("Lead", "Senior", "Mid", "Entry") if re.search(rf"\b(?:{level_patterns[x]})\b", title.lower())), "Any level")
-    identity_board = "public" if kind in ("jobtech", "usajobs", "himalayas", "remotive") else board
+    identity_board = "public" if kind in ("jobtech", "usajobs", "himalayas", "remotive", "jobicy", "remoteok", "arbeitnow") else board
     provider_id = raw.get("guid") if kind == "himalayas" else raw.get('id') or raw.get('gh_jid') or raw.get('MatchedObjectId') or url
     stable_id = f"{kind}:{identity_board}:{provider_id}"
     tags = []

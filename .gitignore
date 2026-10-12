@@ -8,3 +8,8 @@ signal.sqlite3*
 artifacts/
 .superpowers/
 sources.local.json
+.venv-public/
+.env
+*.env
+!*.env.example
+signal-public.sqlite3*

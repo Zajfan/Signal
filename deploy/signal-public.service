@@ -1,0 +1,17 @@
+[Unit]
+Description=Signal public job browsing
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/share/signal
+EnvironmentFile=%h/.config/signal/public.env
+ExecStart=%h/.local/share/signal/.venv-public/bin/gunicorn --config deploy/gunicorn.conf.py --chdir backend public_server:create_app()
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
+
+[Install]
+WantedBy=default.target

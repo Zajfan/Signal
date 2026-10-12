@@ -82,4 +82,4 @@ The launch price, duration, currencies, tax handling, refunds and promotion rule
 
 ## Current boundary
 
-The repository now runs a local SQLite-backed marketplace with employer drafts, simulated checkout, company/job review, source ingestion/review and candidate search/detail pages. Local identity controls are development tools. The separate Cloudflare Worker foundation and hosted preview have not been upgraded or deployed as a public paid service. Real authentication, merchant configuration, production scheduling and launch operations remain unconfigured. The partner program is planned in the roadmap.
+The repository now runs a local SQLite-backed marketplace with employer drafts, simulated checkout, company/job review, source ingestion/review and candidate search/detail pages. A separate Python/Gunicorn runtime supports public browsing on the owner's own machine, with `signal.tnhc.dev` as the intended domain. Local identity controls remain development tools; real authentication, merchant configuration, public-domain routing and launch operations remain unconfigured. The partner program is planned in the roadmap.

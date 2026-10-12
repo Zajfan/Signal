@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "python3 backend/local_server.py",
-    "test": "python3 backend/local_server.test.py && python3 backend/ingestion.test.py && python3 backend/search.test.py && node backend/worker.test.mjs",
-    "test:browser": "node tests/browser-smoke.mjs"
+    "test": "python3 backend/local_server.test.py && python3 backend/ingestion.test.py && python3 backend/search.test.py && python3 backend/public_server.test.py && node backend/worker.test.mjs",
+    "test:browser": "node tests/browser-smoke.mjs",
+    "test:public-browser": "node tests/public-browser-smoke.mjs"
   },
   "devDependencies": {
     "playwright": "1.59.1"

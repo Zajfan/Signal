@@ -47,6 +47,6 @@ The browser suite creates a disposable SQLite database and loopback server. It n
 
 ## Runtime boundaries
 
-The new workspaces and ingestion controls target the Python local runtime. `backend/worker.mjs` remains the separately tested Cloudflare/D1 production foundation. It does not yet expose every local route or serve this client. Do not deploy it unchanged expecting local identity controls, local moderation or simulated checkout to become production authentication/payment features.
+The employer workspaces and ingestion controls target the Python local runtime. A separate Gunicorn application now serves public browsing without those private controls; see [own-machine hosting](OWN_MACHINE_HOSTING.md). `backend/worker.mjs` remains a separately tested legacy alternative. Neither runtime turns the local identity controls or simulated checkout into real accounts or payments.
 
 Production release still requires trusted sign-in, company membership/roles, configured merchant prices, payment and refund reconciliation, deployment, operational monitoring, and an ingestion schedule. Partner enrollment and rewards remain planned in `ROADMAP.md`.

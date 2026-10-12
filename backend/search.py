@@ -58,20 +58,20 @@ def search_jobs(db_path, query):
         if len(identities)>200 or any(len(i)>200 for i in identities): raise ValueError('Too many saved jobs')
         clauses.append('id IN ('+','.join('?' for _ in identities)+')');values.extend(identities)
     where=' WHERE '+' AND '.join(clauses) if clauses else ''
-    with connect(db_path) as db:
+    with connect(db_path, read_only=True) as db:
         total=db.execute('SELECT COUNT(*) FROM ('+PUBLIC+')'+where,values).fetchone()[0]
         rows=db.execute('SELECT * FROM ('+PUBLIC+')'+where+' ORDER BY is_featured DESC,datetime(created_at) DESC,id LIMIT ? OFFSET ?',(*values,limit,offset)).fetchall()
     return {'jobs':[decode(row) for row in rows],'total':total,'limit':limit,'offset':offset}
 
 
 def public_job(db_path, identity):
-    with connect(db_path) as db:
+    with connect(db_path, read_only=True) as db:
         row=db.execute('SELECT * FROM ('+PUBLIC+') WHERE id=?',(identity,)).fetchone()
     return decode(row) if row else None
 
 
 def facets(db_path):
-    with connect(db_path) as db:
+    with connect(db_path, read_only=True) as db:
         result={}
         for key,column in (('countries','country_code'),('currencies','salary_currency'),('employment_types','employment_type')):
             result[key]=[r[0] for r in db.execute('SELECT DISTINCT '+column+' FROM ('+PUBLIC+') WHERE '+column+' IS NOT NULL AND '+column+"<>'' ORDER BY "+column)]

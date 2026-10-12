@@ -1,6 +1,6 @@
 # Signal marketplace backend and local runtime
 
-Run the SQLite-backed local app on a development machine with Python 3.10+; no third-party Python packages are required. The Cloudflare Worker remains available as the production runtime foundation.
+Run the SQLite-backed local app on a development machine with Python 3.10+; no third-party Python packages are required for development. The separate public browsing runtime uses Gunicorn; see [own-machine hosting](../docs/OWN_MACHINE_HOSTING.md). The Cloudflare Worker is retained as a legacy alternative, not the selected hosting path.
 
 See [the current local walkthrough](../docs/LOCAL_DEVELOPMENT.md) and [ingestion setup](../docs/INGESTION.md) for the new workspaces. Local GET/PATCH employer details, admin queue GET routes, imported-job review, public job details and facets are additions to the Python runtime; the Worker route table below is its separate production foundation.
 
@@ -92,6 +92,6 @@ The `scheduled` handler accepts a reviewed `INGEST_SOURCES` JSON array. An enabl
 
 ## Deployment status
 
-The intended public deployment is `https://signal.tnhc.dev`; see [the public deployment plan](../docs/PUBLIC_DEPLOYMENT.md). The standalone public runtime needs trusted authentication and parity with the current local APIs before that domain is connected.
+The intended public deployment runs on the owner's machine at `https://signal.tnhc.dev`; see [the public deployment plan](../docs/PUBLIC_DEPLOYMENT.md). Browsing has a separate Gunicorn entry point; trusted authentication and real payments are still required before exposing employer/staff workflows.
 
 The hosted Site is currently static and owner-private. This backend is not live yet: deployment requires converting the Site to a Worker with a D1 binding, applying the migration, confirming the supported sign-in and public audience, configuring Stripe prices/secrets, and connecting the reviewed ingestion schedule. Keep paid post submission disabled until those checks are complete.

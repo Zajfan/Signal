@@ -1,4 +1,5 @@
 export const $ = (selector, root = document) => root.querySelector(selector);
+export const capabilities = {employer_posting:false};
 export const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 export function readStorage(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }

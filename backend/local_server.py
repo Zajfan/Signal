@@ -27,8 +27,9 @@ class ClosingConnection(sqlite3.Connection):
             self.close()
 
 
-def connect(path):
-    db = sqlite3.connect(path, factory=ClosingConnection)
+def connect(path, *, read_only=False):
+    target = Path(path).resolve().as_uri() + '?mode=ro' if read_only else path
+    db = sqlite3.connect(target, uri=read_only, factory=ClosingConnection)
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA foreign_keys = ON")
     return db

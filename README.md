@@ -60,10 +60,10 @@ Browser tests use a disposable database and server, covering company verificatio
 
 ## Deployment boundary
 
-The planned public address is **`https://signal.tnhc.dev`**, with anonymous job browsing and authenticated employer/staff workspaces. See the [public deployment plan](docs/PUBLIC_DEPLOYMENT.md) for runtime, authentication, hosting and domain setup work.
+The planned public address is **`https://signal.tnhc.dev`**, hosted on the owner's machine. A separate Python/Gunicorn browsing runtime now serves the candidate experience without exposing local identity or write routes. See [own-machine hosting](docs/OWN_MACHINE_HOSTING.md) for installation, database setup and the systemd service, and the [public deployment plan](docs/PUBLIC_DEPLOYMENT.md) for the remaining account/payment work.
 
 This is a functioning **local alpha**, not a launched paid service. Local identity and moderator controls deliberately simulate accounts; do not expose this Python server publicly. Real sign-in, payment prices/secrets, tax/refund policy and production operations remain launch work.
 
-`backend/worker.mjs` and its D1 schema remain the separately tested Cloudflare production foundation. The new local workspace routes are not yet all implemented in that Worker. See [backend setup](backend/README.md), [product vision](docs/PRODUCT_VISION.md), [architecture](docs/MARKETPLACE_ARCHITECTURE.md) and [roadmap](docs/ROADMAP.md). The partner program is planned, including referrals, ATS/data and distribution partners; no commissions or terms are active.
+`backend/worker.mjs` remains a separately tested legacy Cloudflare foundation; it is not the chosen hosting path. See [backend setup](backend/README.md), [product vision](docs/PRODUCT_VISION.md), [architecture](docs/MARKETPLACE_ARCHITECTURE.md) and [roadmap](docs/ROADMAP.md). The partner program is planned, including referrals, ATS/data and distribution partners; no commissions or terms are active.
 
 The client styling and shared layout are adapted from the generated screens preserved under `docs/designs/`. Runtime content comes from the API, not their illustrative design data.

@@ -55,7 +55,7 @@ Do not enable production checkout until a payment provider, merchant account, cu
 
 The intended public origin is **`https://signal.tnhc.dev`**. Candidate search and job pages will be accessible without an account; employer and staff actions require server-enforced authentication and roles. See [the deployment sequence](PUBLIC_DEPLOYMENT.md). Localhost remains the development environment.
 
-The current `index.html` and `web/` client use the Python/SQLite API for employer, operations and candidate workflows. Ingestion runs as a separate serialized CLI process. The Cloudflare Worker remains a separate deployment foundation and does not yet implement every local route. For production, complete:
+The current `index.html` and `web/` client use the Python/SQLite API for employer, operations and candidate workflows. `backend/public_server.py` provides a separate browsing-only WSGI runtime with read-only database access and a public shell. Ingestion runs as a separate serialized CLI process. The Cloudflare Worker is retained as a legacy alternative, not the chosen host. For the complete public marketplace, add:
 
 - responsive web client with public, crawlable job-detail routes;
 - authenticated API for employers, candidates and operations;
@@ -65,7 +65,7 @@ The current `index.html` and `web/` client use the Python/SQLite API for employe
 - object storage only for authorized company assets; avoid candidate resumes initially;
 - observability for connector freshness, duplicate rates, payments and publishing.
 
-Recommended first production stack remains open. Use an existing managed database/auth provider if available; otherwise select a stack that supports row-level company isolation, webhook handling and scheduled workers. Do not force the static Site to act like a persistent backend.
+The selected hosting location is the owner's own machine. The first public browsing runtime uses Gunicorn and SQLite behind the existing HTTPS proxy or tunnel; see [own-machine hosting](OWN_MACHINE_HOSTING.md). Authentication, company isolation and production billing remain separate implementation stages. Revisit database/search infrastructure as load and availability requirements grow.
 
 ## Security and operations
 

@@ -32,9 +32,17 @@ Versioning follows the user's three-part scheme: `0.0.x` alpha, `0.x.0` beta, `1
 - Local hourly JobTech ingestion into the private review queue; other boards require configuration and permission review.
 - Explicit empty/loading/error states and desktop/mobile browser validation.
 
+## Own-machine public browsing foundation (implemented; not publicly deployed)
+
+- Separate Python/Gunicorn public runtime using the tested search, facets and job-detail API.
+- Read-only database access and a public shell without development identity or employer/staff controls.
+- Private/write routes unavailable regardless of client-supplied identity headers.
+- Pinned runtime dependency, systemd service template and own-machine hosting instructions for `signal.tnhc.dev`.
+- Real account access, paid posting and domain/proxy activation remain pending.
+
 ## Next — Production paid listing alpha
 
-- Prepare public hosting at **`https://signal.tnhc.dev`**: production API parity, trusted accounts, persistent storage, scheduled ingestion, HTTPS and custom-domain routing. See [public deployment](PUBLIC_DEPLOYMENT.md).
+- Complete public hosting on the owner's machine at **`https://signal.tnhc.dev`**: trusted accounts, private API workflows, persistent storage, scheduled ingestion, HTTPS and custom-domain routing. See [public deployment](PUBLIC_DEPLOYMENT.md).
 - Allow anonymous candidate browsing while restricting employer actions to company members and operations to staff.
 - Confirm products/prices/currency/durations and refund/tax policy.
 - Configure hosted checkout, payment webhook and order reconciliation.
